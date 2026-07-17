@@ -1,52 +1,49 @@
 (function() {
-    'use strict';
-
-    Lampa.Manifest.plugins = Lampa.Manifest.plugins || {};
-    Lampa.Manifest.plugins.spy = {
-        name: 'Шпион',
-        version: '1.0.0',
-        description: 'Находит плавающую панель и показывает её класс',
-        author: 'AI'
-    };
-
-    Lampa.Listener.follow('app', function(e) {
-        if (e.type === 'ready') {
-            // Ждем 3 секунды, чтобы Lampa полностью загрузила интерфейс
-            setTimeout(function() {
-                let found = [];
-                let w = window.innerWidth;
-                let h = window.innerHeight;
-
-                // Ищем все элементы на странице
-                document.querySelectorAll('div, span, a, button, svg').forEach(el => {
-                    let r = el.getBoundingClientRect();
-                    
-                    // Проверяем, находится ли элемент в левом нижнем углу
-                    if (r.left < (w * 0.35) && r.top > (h * 0.6)) {
-                        let style = window.getComputedStyle(el);
-                        // Если элемент видим и не слишком огромный (исключаем фон)
-                        if (style.display !== 'none' && style.visibility !== 'hidden' && r.width > 5 && r.width < 250 && r.height > 5 && r.height < 250) {
-                            let className = (typeof el.className === 'string' ? el.className : '');
-                            // Собираем уникальные классы
-                            if (className && found.indexOf(className) === -1) {
-                                found.push(className);
-                            }
-                        }
-                    }
-                });
-
-                let resultText = found.length > 0 ? found.join('<br>') : 'Ничего не найдено в левом нижнем углу!';
-
-                // Создаем черное окно поверх всего приложения
-                let modal = document.createElement('div');
-                modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;';
-                modal.innerHTML = '<div style="background:#1f1f1f;padding:20px;border-radius:10px;max-width:400px;width:100%;color:#fff;font-family:sans-serif;font-size:16px;line-height:1.5;word-break:break-all;">' + 
-                                  '<b style="display:block;margin-bottom:15px;color:#2196F3;">Найденные классы панельки:</b>' + 
-                                  resultText + 
-                                  '<br><br><div style="text-align:center;color:#888;font-size:12px;">Сделай скриншот этого окна и скинь создателю плагина. Чтобы закрыть — смахни Lampa из памяти.</div>' + 
-                                  '</div>';
-                document.body.appendChild(modal);
-            }, 3000);
+    // Вставляем CSS-стили моментально
+    var style = document.createElement('style');
+    style.innerHTML = `
+        /* Скрываем ВСЕ возможные плавающие кнопки Lampa по известным классам */
+        .head__menu-icon, .navigator-floating, .floating-button, 
+        .menu-fab, .player-tool, .bottom-left-panel, .head__left.mobile, 
+        .head__navigation, .head__menu, .navigation-floating, 
+        .touch-menu, .touch-nav, .fab, .menu__button {
+            display: none !important;
+            opacity: 0 !important;
+            visibility: hidden !important;
+            width: 0 !important;
+            height: 0 !important;
         }
-    });
+    `;
+    document.head.appendChild(style);
+
+    // Запускаем независимый таймер, который каждые 500мс проверяет экран
+    setInterval(function() {
+        var w = window.innerWidth;
+        var h = window.innerHeight;
+        var elems = document.querySelectorAll('div, a, button, span, svg');
+        
+        for (var i = 0; i < elems.length; i++) {
+            var el = elems[i];
+            
+            // Пропускаем элементы внутри плеера, модальных окон и карточек
+            if (el.closest('.player, .modal, .card, .full-start, .explorer__content, .simplebox')) continue;
+
+            var rect = el.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) continue;
+
+            var cs = window.getComputedStyle(el);
+            
+            // Если элемент висит поверх всего (fixed/absolute)
+            if (cs.position === 'fixed' || cs.position === 'absolute') {
+                
+                // Проверяем: левее 40% экрана И ниже 65% экрана
+                var isBottomLeft = rect.left < (w * 0.4) && rect.top > (h * 0.65);
+                var isSmall = rect.width < 200 && rect.height < 200;
+
+                if (isBottomLeft && isSmall) {
+                    el.style.setProperty('display', 'none', 'important');
+                }
+            }
+        }
+    }, 500); // Проверка 2 раза в секунду
 })();
