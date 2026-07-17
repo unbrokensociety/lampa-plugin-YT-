@@ -5,61 +5,54 @@
     if (!window.Lampa) return console.log('Lampa YouTube Plugin: Lampa not found');
 
     // ==========================================
-    // 1. СТИЛИ (Чистый YouTube без рамок Lampa)
+    // 1. АГРЕССИВНЫЕ СТИЛИ (УБИРАЕМ РАМКИ LAMPA)
     // ==========================================
     const style = document.createElement('style');
     style.id = 'youtube-custom-theme';
     style.textContent = `
-        /* Чистый фон как в YT */
-        body.body--full, 
-        .layer--wheight, 
-        .startpage,
-        .anybar--hide {
+        /* Убиваем все рамки, отступы и серые фоны Lampa на этой странице */
+        .layer--render,
+        .layer__slice,
+        .wrap,
+        .wrap__content,
+        .scroll,
+        .content,
+        .youtube-plugin-container {
             background-color: #0f0f0f !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            border: none !important;
+            max-width: 100% !important;
+            width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
         }
 
-        /* Верхний бар */
         .head {
             background-color: #0f0f0f !important;
             border-bottom: 1px solid #272727 !important;
             box-shadow: none !important;
-            height: 56px !important;
         }
 
-        /* Контент на всю ширину */
-        .content {
-            padding: 0 !important;
-            margin: 0 !important;
-        }
-        
-        .layer-content {
-            padding-top: 16px !important;
-        }
-
-        /* Уникальная сетка YT */
+        /* Контейнер сетки */
         .yt-grid {
             display: grid !important;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)) !important;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)) !important;
             gap: 40px 16px !important;
-            padding: 16px 24px !important;
-            width: 100% !important;
+            padding: 24px !important;
             box-sizing: border-box !important;
         }
 
         @media (max-width: 900px) {
             .yt-grid {
                 grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important;
-                gap: 24px 12px !important;
-                padding: 12px 16px !important;
+                padding: 16px !important;
             }
         }
 
-        /* Карточка (без сторонних рамок Lampa) */
+        /* Карточка */
         .yt-card {
             background: transparent !important;
-            border-radius: 0 !important;
-            box-shadow: none !important;
-            border: none !important;
             padding: 0 !important;
             margin: 0 !important;
             width: 100% !important;
@@ -67,9 +60,10 @@
             outline: none !important;
         }
 
-        /* Эффект фокуса для TV и ПК */
+        /* Фокус для ТВ и ПК */
         .yt-card.is-focus .yt-card__img {
-            transform: scale(1.02);
+            transform: scale(1.03);
+            border-radius: 0 !important;
         }
         .yt-card.is-focus .yt-card__img img {
             border-radius: 0 !important;
@@ -84,7 +78,7 @@
             background-color: #272727 !important;
             position: relative !important;
             margin-bottom: 12px !important;
-            transition: transform 0.2s ease;
+            transition: transform 0.2s ease, border-radius 0.2s ease;
         }
 
         .yt-card__img img {
@@ -106,9 +100,10 @@
             right: 8px !important;
             bottom: 8px !important;
             position: absolute !important;
+            z-index: 2;
         }
 
-        /* Текст под видео */
+        /* Текст */
         .yt-card__body {
             display: flex !important;
             gap: 12px !important;
@@ -135,7 +130,6 @@
             -webkit-box-orient: vertical !important;
             text-overflow: ellipsis !important;
             margin: 0 !important;
-            padding: 0 !important;
         }
 
         .yt-card__text {
@@ -156,12 +150,15 @@
     document.head.appendChild(style);
 
     // ==========================================
-    // 2. КОМПОНЕНТ ГЛАВНОЙ СТРАНИЦЫ YT
+    // 2. ГЛАВНАЯ СТРАНИЦА (ЗАГРУЗКА ДАННЫХ ИЗ API)
     // ==========================================
     function YoutubeMain(component) {
-        let html = $('<div class="youtube-plugin-container"><div class="yt-grid"></div></div>');
         let network = new Lampa.Reguest();
+        let html = $('<div class="scroll"><div class="youtube-plugin-container"><div class="yt-grid"></div></div></div>');
         
+        // Показываем загрузку
+        html.find('.yt-grid').html('<div style="text-align:center; padding:40px; color:#aaa; grid-column: 1/-1;">Загрузка видео...</div>');
+
         // Форматирование просмотров
         function formatCount(num) {
             if (!num) return '';
@@ -172,30 +169,58 @@
 
         // Создание карточки
         function buildCard(item) {
+            let video_id = item.url.split('=')[1]; // Извлекаем ID из "/watch?v=..."
+
             let card = $(`
                 <div class="yt-card">
                     <div class="yt-card__img">
-                        <img src="${item.img || ''}" alt="">
-                        ${item.duration ? `<span class="yt-card__time">${item.duration}</span>` : ''}
+                        <img src="${item.thumbnail}" alt="">
+                        ${item.duration ? `<span class="yt-card__time">${Math.floor(item.duration/60)}:${String(item.duration%60).padStart(2,'0')}</span>` : ''}
                     </div>
                     <div class="yt-card__body">
                         <div class="yt-card__info">
-                            <div class="yt-card__title">${item.title || 'Без названия'}</div>
-                            <div class="yt-card__text">${item.channel || 'YouTube'}</div>
-                            <div class="yt-card__text">${item.views ? formatCount(item.views) : ''} ${item.time ? ' • ' + item.time : ''}</div>
+                            <div class="yt-card__title">${item.title}</div>
+                            <div class="yt-card__text">${item.uploaderName}</div>
+                            <div class="yt-card__text">${formatCount(item.views)} • ${new Date(item.uploaded * 1000).toLocaleDateString()}</div>
                         </div>
                     </div>
                 </div>
             `);
 
-            // Обработка клика/нажатия OK на пульте
+            // Клик/нажатие OK
             card.on('hover:enter', function () {
-                Lampa.Activity.push({
-                    url: item.url || item.id,
-                    title: item.title,
-                    component: 'youtube_player',
-                    movie: item, // Передаем данные о видео в плеер
-                    page: 1
+                // Показываем загрузчик пока тянем прямую ссылку
+                Lampa.Controller.toggle('content', false);
+                let loader = $('<div class="broadcast__scan" style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:1000;"></div>');
+                $('body').append(loader);
+
+                // Запрашиваем прямые ссылки на потоки
+                network.silent('https://pipedapi.kavin.rocks/streams/' + video_id, (stream_data) => {
+                    loader.remove();
+                    
+                    // Ищем MP4 поток, где звук уже встроен (не videoOnly)
+                    let video_stream = stream_data.videoStreams.find(s => s.mimeType.includes('mp4') && !s.videoOnly);
+                    
+                    // Если нет совмещенного, берем любой mp4
+                    if(!video_stream) video_stream = stream_data.videoStreams.find(s => s.mimeType.includes('mp4'));
+
+                    if(video_stream) {
+                        // ЗАПУСКАЕМ ШТАТНЫЙ ПЛЕЕР LAMPA
+                        let playlist = [{
+                            title: item.title,
+                            url: video_stream.url
+                        }];
+                        
+                        Lampa.Player.play(playlist);
+                        Lampa.Player.playlist(playlist);
+                    } else {
+                        Lampa.Noty.show('Не удалось получить ссылку на видео');
+                        Lampa.Controller.toggle('content', true);
+                    }
+                }, (err) => {
+                    loader.remove();
+                    Lampa.Noty.show('Ошибка загрузки потока');
+                    Lampa.Controller.toggle('content', true);
                 });
             });
 
@@ -207,88 +232,49 @@
         };
 
         this.render = function () {
-            // Заглушка для демонстрации (замени на свой API)
-            for(let i=0; i<12; i++) {
-                html.find('.yt-grid').append(buildCard({
-                    title: 'Как сделать плагин для Lampa - Часть ' + (i+1),
-                    channel: 'Твой Канал',
-                    img: 'https://picsum.photos/640/360?random='+i,
-                    duration: Math.floor(Math.random()*20)+1 + ':' + String(Math.floor(Math.random()*60)).padStart(2,'0'),
-                    views: Math.floor(Math.random()*1000000),
-                    time: '2 дня назад',
-                    url: 'https://r6---sn-googleqa...video_id=' + i // Заменить на реальный URL потока
-                }));
-            }
-            return html;
-        };
-
-        this.destroy = function () {
-            html.remove();
-        };
-    }
-
-    // ==========================================
-    // 3. КОМПОНЕНТ ПЛЕЕРА (С нормальным выбором звука)
-    // ==========================================
-    function YoutubePlayer(component) {
-        let video_data = component.movie; // Получаем данные, переданные из карточки
-        let html = $('<div style="width:100%; height:100%;"></div>');
-
-        this.create = function () {
-            return this.render();
-        };
-
-        this.render = function () {
-            // ИСПОЛЬЗУЕМ ШТАТНЫЙ ПЛЕЕР LAMPA
-            // Он уже содержит меню выбора качества, звуковых дорожек и субтитров
+            // Запрос трендовых видео (можно заменить на плейлист или поиск)
+            let api_url = "https://pipedapi.kavin.rocks/trending?region=US"; // Регион можно сменить на RU, UA и т.д.
             
-            let playlist = [{
-                title: video_data.title,
-                url: video_data.url, // Здесь должен быть прямой URL до потока (mp4, m3u8 и тд)
-                quality: '1080p', // Можно передать массив доступных качеств, если нужно
-                // tracks: [{...}] // Если есть аудио дорожки (переводы), передаем их тут
-            }];
+            network.silent(api_url, (data) => {
+                html.find('.yt-grid').empty(); // Очищаем "Загрузка..."
+                data.forEach(item => {
+                    html.find('.yt-grid').append(buildCard(item));
+                });
+                // Обновляем скролл и фокус Lampa
+                Lampa.Controller.toggle('content', true);
+            }, (err) => {
+                html.find('.yt-grid').html('<div style="text-align:center; padding:40px; color:#ff5252; grid-column: 1/-1;">Ошибка загрузки. Проверьте интернет или API.</div>');
+            });
 
-            Lampa.Player.play(playlist);
-            Lampa.Player.playlist(playlist);
-
-            // Так как плеер Lampa запускается поверх всего, этот компонент просто пустышка-обертка
             return html;
         };
 
         this.destroy = function () {
+            network.clear();
             html.remove();
         };
     }
 
     // ==========================================
-    // 4. РЕГИСТРАЦИЯ В LAMPA
+    // 3. РЕГИСТРАЦИЯ В LAMPA
     // ==========================================
-    
-    // Регистрируем компоненты
     Lampa.Component.add('youtube_main', YoutubeMain);
-    Lampa.Component.add('youtube_player', YoutubePlayer);
 
-    // Добавляем кнопку в главное меню
     function addToMenu() {
-        if (Lampa.Manifest && Lampa.Manifest.plugins) {
-            // Стандартный путь для новых версий Lampa
-            Lampa.MainMenu.add({
-                name: 'YouTube',
-                icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 15l5.19-3L10 9v6m11.56-7.83c.13.47.22 1.1.28 1.9.07.8.1 1.49.1 2.09L22 12c0 2.19-.16 3.8-.44 4.83-.25.9-.83 1.48-1.73 1.73-.47.13-1.33.22-2.65.28-1.3.07-2.49.1-3.59.1L12 19c-4.19 0-6.8-.16-7.83-.44-.9-.25-1.48-.83-1.73-1.73-.13-.47-.22-1.1-.28-1.9-.07-.8-.1-1.49-.1-2.09L2 12c0-2.19.16-3.8.44-4.83.25-.9.83-1.48 1.73-1.73.47-.13 1.33-.22 2.65-.28 1.3-.07 2.49-.1 3.59-.1L12 5c4.19 0 6.8.16 7.83.44.9.25 1.48.83 1.73 1.73z"/></svg>',
-                onSelect: function () {
-                    Lampa.Activity.push({
-                        url: '',
-                        title: 'YouTube',
-                        component: 'youtube_main',
-                        page: 1
-                    });
-                }
-            });
-        }
+        Lampa.MainMenu.add({
+            name: 'YouTube',
+            icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 15l5.19-3L10 9v6m11.56-7.83c.13.47.22 1.1.28 1.9.07.8.1 1.49.1 2.09L22 12c0 2.19-.16 3.8-.44 4.83-.25.9-.83 1.48-1.73 1.73-.47.13-1.33.22-2.65.28-1.3.07-2.49.1-3.59.1L12 19c-4.19 0-6.8-.16-7.83-.44-.9-.25-1.48-.83-1.73-1.73-.13-.47-.22-1.1-.28-1.9-.07-.8-.1-1.49-.1-2.09L2 12c0-2.19.16-3.8.44-4.83.25-.9.83-1.48 1.73-1.73.47-.13 1.33-.22 2.65-.28 1.3-.07 2.49-.1 3.59-.1L12 5c4.19 0 6.8.16 7.83.44.9.25 1.48.83 1.73 1.73z"/></svg>',
+            onSelect: function () {
+                Lampa.Activity.push({
+                    url: '',
+                    title: 'YouTube',
+                    component: 'youtube_main',
+                    page: 1
+                });
+            }
+        });
     }
 
-    // Ждем загрузку приложения
     if (Lampa.MainMenu) {
         addToMenu();
     } else {
