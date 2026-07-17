@@ -1,470 +1,300 @@
+// lampa-plugin-YT-@main/youtube.js
 (function () {
     'use strict';
 
-    /* =======================================================
-       YOUTUBE-STYLE PLAYER FOR LAMPA — максимально схожий
-       ======================================================= */
+    if (!window.Lampa) return console.log('Lampa YouTube Plugin: Lampa not found');
 
-    function formatTime(t) {
-        if (!t || t < 0) return '0:00';
-        var h = Math.floor(t / 3600);
-        var m = Math.floor((t % 3600) / 60);
-        var s = Math.floor(t % 60);
-        if (h > 0) return h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
-        return m + ':' + (s < 10 ? '0' : '') + s;
-    }
-
-    function addStyle() {
-        if (document.getElementById('yt-player-style')) return;
-
-        var css = document.createElement('style');
-        css.id = 'yt-player-style';
-        css.textContent = `
-
-/* ===== 1. СКИДУВАННЯ ПАНЕЛЕЙ ===== */
-.player:not(.iptv) .player-panel,
-.player:not(.iptv) .player-info,
-.player:not(.iptv) .player-footer {
-    background: transparent !important;
-    -webkit-backdrop-filter: none !important;
-    backdrop-filter: none !important;
-}
-.player:not(.iptv) .player-footer { display: none !important; }
-.player:not(.iptv) .head-backward { display: none !important; }
-.player:not(.iptv) .player-panel__seek { display: none !important; }
-.player:not(.iptv) .player-info__values .value--size { display: none; }
-
-/* ===== 2. ГРАДІЄНТНІ НАКЛАДКИ (як на YouTube) ===== */
-.player:not(.iptv) .player-panel {
-    background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 50%, transparent 100%) !important;
-    padding-bottom: 0;
-}
-.player:not(.iptv) .player-info {
-    background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.2) 60%, transparent 100%) !important;
-    padding-bottom: 2em;
-}
-
-/* ===== 3. ТАЙМЛАЙН — ТОНКА ЧЕРВОНА СМУГА ЯК У YOUTUBE ===== */
-.player:not(.iptv) .player-panel__timeline {
-    height: 3px !important;
-    margin: 0 0 4px !important;
-    padding: 0 !important;
-    background: rgba(255,255,255,0.2) !important;
-    border-radius: 0 !important;
-    cursor: pointer;
-    position: relative;
-    z-index: 25;
-    transition: height .12s ease;
-    order: 0; /* зверху в панелі */
-}
-.player:not(.iptv) .player-panel__timeline .player-panel__position {
-    height: 3px !important;
-    background: #ff0000 !important;
-    border-radius: 0 !important;
-    overflow: visible;
-}
-.player:not(.iptv) .player-panel__timeline .player-panel__position > div {
-    background: #ff0000 !important;
-    border-radius: 0;
-    height: 3px !important;
-    transition: height .12s ease;
-}
-.player:not(.iptv) .player-panel__timeline .player-panel__buffer {
-    background: rgba(255,255,255,0.3) !important;
-    border-radius: 0 !important;
-    height: 3px !important;
-}
-/* Круглий повзунок — з'являється при наведенні */
-.player:not(.iptv) .player-panel__timeline .player-panel__position > div::after {
-    content: '' !important;
-    display: none;
-    position: absolute;
-    right: -6.5px;
-    top: -5px;
-    width: 13px;
-    height: 13px;
-    border-radius: 50%;
-    background: #ff0000;
-    box-shadow: 0 0 6px rgba(255,0,0,0.3);
-}
-.player:not(.iptv) .player-panel__timeline.focus { height: 5px !important; }
-.player:not(.iptv) .player-panel__timeline.focus .player-panel__position { height: 5px !important; }
-.player:not(.iptv) .player-panel__timeline.focus .player-panel__position > div { height: 5px !important; }
-.player:not(.iptv) .player-panel__timeline.focus .player-panel__position > div::after { display: block; }
-
-/* ===== 4. РЯДОК З ЧАСОМ ===== */
-.player:not(.iptv) .player-panel__line-one {
-    margin: 0 0 4px !important;
-    padding: 0;
-    order: 1;
-    position: relative;
-    z-index: 20;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-}
-
-/* ===== 5. КНОПКИ — ПЛОСКІ, КРУГЛІ ===== */
-.player:not(.iptv) .player-panel__body {
-    display: flex;
-    flex-direction: column;
-    padding: 0 12px 8px !important;
-}
-.player:not(.iptv) .player-panel__center {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    order: 2;
-}
-.player:not(.iptv) .player-panel__left {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    flex: 1;
-    order: 0;
-}
-.player:not(.iptv) .player-panel__right {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    flex: 1;
-    order: 2;
-    justify-content: flex-end;
-}
-/* Рядок кнопок: ліворуч — плей/пауза, праворуч — все інше */
-.player:not(.iptv) .player-panel__controls-row {
-    display: flex;
-    align-items: center;
-    order: 2;
-}
-
-.player:not(.iptv) .player-panel .button {
-    width: 36px;
-    height: 36px;
-    padding: 6px;
-    background: transparent !important;
-    border-radius: 50% !important;
-    opacity: .9;
-    border: none;
-    transition: background .1s, transform .1s;
-    margin: 0 !important;
-}
-.player:not(.iptv) .player-panel .button.focus,
-.player:not(.iptv) .player-panel .button:hover {
-    background: rgba(255,255,255,.12) !important;
-    transform: scale(1.05);
-}
-.player:not(.iptv) .player-panel .button.focus {
-    background: rgba(255,255,255,.18) !important;
-}
-.player:not(.iptv) .player-panel .button > svg {
-    width: 20px;
-    height: 20px;
-    fill: #fff;
-}
-.player:not(.iptv) .player-panel .button + .button {
-    margin-left: 0 !important;
-}
-
-/* ===== 6. PLAY/PAUSE — більша ===== */
-.player:not(.iptv) .player-panel__playpause {
-    width: 40px !important;
-    height: 40px !important;
-    padding: 8px !important;
-    margin: 0 4px !important;
-}
-.player:not(.iptv) .player-panel__playpause > svg {
-    width: 24px !important;
-    height: 24px !important;
-}
-
-/* ===== 7. NEXT / PREV ===== */
-.player:not(.iptv) .player-panel__next,
-.player:not(.iptv) .player-panel__prev {
-    width: 32px !important;
-    height: 32px !important;
-    padding: 6px !important;
-}
-.player:not(.iptv) .player-panel__next > svg,
-.player:not(.iptv) .player-panel__prev > svg {
-    width: 16px;
-    height: 16px;
-}
-
-/* ===== 8. ЯКІСТЬ — ПІГУЛКА (як 1080p на YouTube) ===== */
-.player:not(.iptv) .player-panel__quality {
-    width: auto !important;
-    border-radius: 3px !important;
-    padding: 0 8px !important;
-    height: 28px !important;
-    font-size: 11px;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: .3px;
-    background: rgba(255,255,255,.08) !important;
-    color: #fff;
-    display: inline-flex;
-    align-items: center;
-}
-
-/* ===== 9. БОКСИ ДЛЯ КНОПОК ===== */
-.player:not(.iptv) .player-panel__box-buttons {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-    gap: 0;
-}
-.player:not(.iptv) .player-panel__box-buttons + .player-panel__box-buttons {
-    margin-left: 4px;
-}
-
-/* ===== 10. ВЕЛИКА КНОПКА PLAY ПО ЦЕНТРУ (як на YouTube) ===== */
-.yt-big-play {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    -webkit-transform: translate(-50%, -50%);
-    transform: translate(-50%, -50%);
-    z-index: 8;
-    width: 66px;
-    height: 66px;
-    border-radius: 50%;
-    background: rgba(0,0,0,.55);
-    border: none;
-    cursor: pointer;
-    display: none;
-    -webkit-box-align: center;
-    -webkit-align-items: center;
-    align-items: center;
-    -webkit-box-pack: center;
-    -webkit-justify-content: center;
-    justify-content: center;
-    pointer-events: auto;
-    padding: 0;
-    outline: none;
-    transition: background .15s, -webkit-transform .15s, transform .15s;
-}
-.yt-big-play:hover {
-    background: rgba(0,0,0,.75);
-    -webkit-transform: translate(-50%, -50%) scale(1.05);
-    transform: translate(-50%, -50%) scale(1.05);
-}
-.yt-big-play svg {
-    width: 30px;
-    height: 30px;
-    fill: #fff;
-    margin-left: 4px;
-}
-.player--paused .yt-big-play {
-    display: -webkit-box !important;
-    display: -webkit-flex !important;
-    display: flex !important;
-}
-
-/* ===== 11. НАЗВА ЗВЕРХУ ЗЛІВА ===== */
-.player:not(.iptv) .player-info__title {
-    font-size: 1.6em;
-    font-weight: 500;
-    line-height: 1.3;
-    text-shadow: 0 1px 4px rgba(0,0,0,.7);
-    max-width: 55%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.player:not(.iptv) .player-info__name {
-    font-size: 1.1em;
-    opacity: .85;
-    text-shadow: 0 1px 4px rgba(0,0,0,.7);
-}
-.player:not(.iptv) .player-info__values {
-    opacity: .85;
-    text-shadow: 0 1px 4px rgba(0,0,0,.7);
-}
-
-/* ===== 12. ВІДОБРАЖЕННЯ ЧАСУ ===== */
-.yt-time {
-    font-size: 12px;
-    color: #fff;
-    font-weight: 500;
-    letter-spacing: .2px;
-    text-shadow: 0 1px 3px rgba(0,0,0,.5);
-    -webkit-user-select: none;
-    user-select: none;
-    white-space: nowrap;
-    padding: 0 4px;
-    line-height: 36px;
-}
-
-/* ===== 13. ПАУЗА — ТЕМНИЙ ОВЕРЛЕЙ ===== */
-.player--paused .player-video__paused {
-    background-color: rgba(0,0,0,.35) !important;
-}
-.player--paused .player-video__loader {
-    background-color: rgba(0,0,0,.45) !important;
-}
-
-/* ===== 14. ВЕЛИКІ ЕКРАНИ (TV) ===== */
-@media (min-width: 1920px) {
-    .player:not(.iptv) .player-panel .button {
-        width: 44px;
-        height: 44px;
-        padding: 8px;
-    }
-    .player:not(.iptv) .player-panel .button > svg { width: 24px; height: 24px; }
-    .player:not(.iptv) .player-panel__playpause {
-        width: 48px !important;
-        height: 48px !important;
-    }
-    .player:not(.iptv) .player-panel__playpause > svg {
-        width: 28px !important;
-        height: 28px !important;
-    }
-    .player:not(.iptv) .player-panel__timeline { height: 4px !important; }
-    .player:not(.iptv) .player-panel__body { padding: 0 20px 10px !important; }
-    .yt-time { font-size: 13px; }
-    .yt-big-play { width: 80px; height: 80px; }
-    .yt-big-play svg { width: 36px; height: 36px; }
-    .player:not(.iptv) .player-info__title { font-size: 1.9em; }
-}
-
-/* ===== 15. ТЕЛЕФОНИ ===== */
-@media (max-width: 767px) {
-    .player:not(.iptv) .player-panel__body { padding: 0 6px 4px !important; }
-    .player:not(.iptv) .player-panel .button {
-        width: 28px;
-        height: 28px;
-        padding: 4px;
-    }
-    .player:not(.iptv) .player-panel .button > svg { width: 16px; height: 16px; }
-    .player:not(.iptv) .player-panel__playpause {
-        width: 34px !important;
-        height: 34px !important;
-        padding: 6px !important;
-    }
-    .player:not(.iptv) .player-panel__playpause > svg {
-        width: 20px !important;
-        height: 20px !important;
-    }
-    .player:not(.iptv) .player-panel__next,
-    .player:not(.iptv) .player-panel__prev {
-        width: 26px !important;
-        height: 26px !important;
-        padding: 4px !important;
-    }
-    .player:not(.iptv) .player-panel__timeline { height: 2px !important; }
-    .yt-time { font-size: 11px; line-height: 28px; }
-    .yt-big-play { width: 54px; height: 54px; }
-    .yt-big-play svg { width: 24px; height: 24px; }
-    .player:not(.iptv) .player-info__title { font-size: 1.2em; max-width: 75%; }
-}
-
-/* ===== 16. ПЛАТФОРМИ ===== */
-body.platform--browser .player:not(.iptv) .player-panel .button,
-body.platform--nw .player:not(.iptv) .player-panel .button {
-    background: transparent !important;
-}
-body.platform--browser .player:not(.iptv) .player-panel .button:hover,
-body.platform--nw .player:not(.iptv) .player-panel .button:hover {
-    background: rgba(255,255,255,.12) !important;
-}`.trim();
-
-        document.head.appendChild(css);
-    }
-
-    function buildDOM() {
-        var render = Lampa.Player.render();
-        if (!render || !render.length) return;
-
-        // Велика кнопка Play по центру
-        if (!render.find('.yt-big-play').length) {
-            var bigPlay = $(
-                '<button class="yt-big-play">' +
-                '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>' +
-                '</button>'
-            );
-            render.find('.player-video__display').after(bigPlay);
-
-            bigPlay.on('click', function (e) {
-                e.stopPropagation();
-                Lampa.Player.play();
-            });
+    // ==========================================
+    // 1. СТИЛИ (Чистый YouTube без рамок Lampa)
+    // ==========================================
+    const style = document.createElement('style');
+    style.id = 'youtube-custom-theme';
+    style.textContent = `
+        /* Чистый фон как в YT */
+        body.body--full, 
+        .layer--wheight, 
+        .startpage,
+        .anybar--hide {
+            background-color: #0f0f0f !important;
         }
 
-        // Відображення часу
-        if (!render.find('.yt-time').length) {
-            var timeEl = $('<span class="yt-time">0:00 / 0:00</span>');
-            render.find('.player-panel__line-one').append(timeEl);
+        /* Верхний бар */
+        .head {
+            background-color: #0f0f0f !important;
+            border-bottom: 1px solid #272727 !important;
+            box-shadow: none !important;
+            height: 56px !important;
+        }
 
-            // Оновлення часу
-            function updateTime() {
-                try {
-                    var cur = Lampa.Player.getPosition();
-                    var dur = Lampa.Player.getDuration();
-                    timeEl.text(dur > 0 ? formatTime(cur) + ' / ' + formatTime(dur) : formatTime(cur));
-                } catch(e) {}
-            }
+        /* Контент на всю ширину */
+        .content {
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        
+        .layer-content {
+            padding-top: 16px !important;
+        }
 
-            if (Lampa.Player.listener) {
-                Lampa.Player.listener.follow('timeupdate', updateTime);
-                Lampa.Player.listener.follow('start', function() { setTimeout(updateTime, 500); });
+        /* Уникальная сетка YT */
+        .yt-grid {
+            display: grid !important;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)) !important;
+            gap: 40px 16px !important;
+            padding: 16px 24px !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+
+        @media (max-width: 900px) {
+            .yt-grid {
+                grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important;
+                gap: 24px 12px !important;
+                padding: 12px 16px !important;
             }
         }
 
-        // Показ/схов великої кнопки Play
-        var bigPlay = render.find('.yt-big-play');
-        if (bigPlay.length && Lampa.Player.listener) {
-            Lampa.Player.listener.follow('pause', function(){
-                bigPlay.css('display', '-webkit-box');
-                bigPlay.css('display', '-webkit-flex');
-                bigPlay.css('display', 'flex');
-            });
-            Lampa.Player.listener.follow('play', function(){ bigPlay.hide(); });
-            Lampa.Player.listener.follow('stop', function(){
-                bigPlay.css('display', '-webkit-box');
-                bigPlay.css('display', '-webkit-flex');
-                bigPlay.css('display', 'flex');
-            });
+        /* Карточка (без сторонних рамок Lampa) */
+        .yt-card {
+            background: transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            cursor: pointer;
+            outline: none !important;
         }
-    }
 
-    function startPlugin() {
-        if (window.yt_player_plugin_final) return;
-        window.yt_player_plugin_final = true;
+        /* Эффект фокуса для TV и ПК */
+        .yt-card.is-focus .yt-card__img {
+            transform: scale(1.02);
+        }
+        .yt-card.is-focus .yt-card__img img {
+            border-radius: 0 !important;
+        }
 
-        addStyle();
+        /* Миниатюра 16:9 */
+        .yt-card__img {
+            border-radius: 12px !important;
+            width: 100% !important;
+            aspect-ratio: 16 / 9 !important;
+            overflow: hidden !important;
+            background-color: #272727 !important;
+            position: relative !important;
+            margin-bottom: 12px !important;
+            transition: transform 0.2s ease;
+        }
 
-        try {
-            buildDOM();
+        .yt-card__img img {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            border-radius: 12px !important;
+            transition: border-radius 0.2s ease, transform 0.2s ease;
+        }
 
-            // Повторюємо при кожному старті відтворення
-            if (window.Lampa && Lampa.Player && Lampa.Player.listener) {
-                Lampa.Player.listener.follow('start', function() {
-                    buildDOM();
+        /* Время видео */
+        .yt-card__time {
+            background: rgba(0, 0, 0, 0.8) !important;
+            color: #fff !important;
+            font-size: 12px !important;
+            font-weight: 500 !important;
+            padding: 2px 4px !important;
+            border-radius: 4px !important;
+            right: 8px !important;
+            bottom: 8px !important;
+            position: absolute !important;
+        }
+
+        /* Текст под видео */
+        .yt-card__body {
+            display: flex !important;
+            gap: 12px !important;
+            padding: 0 4px;
+        }
+
+        .yt-card__info {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 4px !important;
+            width: 100% !important;
+        }
+
+        .yt-card__title {
+            color: #f1f1f1 !important;
+            font-family: Roboto, Arial, sans-serif !important;
+            font-size: 14px !important;
+            font-weight: 500 !important;
+            line-height: 20px !important;
+            max-height: 40px !important;
+            overflow: hidden !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2 !important;
+            -webkit-box-orient: vertical !important;
+            text-overflow: ellipsis !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        .yt-card__text {
+            color: #aaaaaa !important;
+            font-family: Roboto, Arial, sans-serif !important;
+            font-size: 12px !important;
+            font-weight: 400 !important;
+            line-height: 18px !important;
+            margin: 0 !important;
+        }
+
+        /* Скроллбар */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #717171; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #909090; }
+    `;
+    document.head.appendChild(style);
+
+    // ==========================================
+    // 2. КОМПОНЕНТ ГЛАВНОЙ СТРАНИЦЫ YT
+    // ==========================================
+    function YoutubeMain(component) {
+        let html = $('<div class="youtube-plugin-container"><div class="yt-grid"></div></div>');
+        let network = new Lampa.Reguest();
+        
+        // Форматирование просмотров
+        function formatCount(num) {
+            if (!num) return '';
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + ' млн просмотров';
+            if (num >= 1000) return (num / 1000).toFixed(0) + ' тыс. просмотров';
+            return num + ' просмотров';
+        }
+
+        // Создание карточки
+        function buildCard(item) {
+            let card = $(`
+                <div class="yt-card">
+                    <div class="yt-card__img">
+                        <img src="${item.img || ''}" alt="">
+                        ${item.duration ? `<span class="yt-card__time">${item.duration}</span>` : ''}
+                    </div>
+                    <div class="yt-card__body">
+                        <div class="yt-card__info">
+                            <div class="yt-card__title">${item.title || 'Без названия'}</div>
+                            <div class="yt-card__text">${item.channel || 'YouTube'}</div>
+                            <div class="yt-card__text">${item.views ? formatCount(item.views) : ''} ${item.time ? ' • ' + item.time : ''}</div>
+                        </div>
+                    </div>
+                </div>
+            `);
+
+            // Обработка клика/нажатия OK на пульте
+            card.on('hover:enter', function () {
+                Lampa.Activity.push({
+                    url: item.url || item.id,
+                    title: item.title,
+                    component: 'youtube_player',
+                    movie: item, // Передаем данные о видео в плеер
+                    page: 1
                 });
-            }
-        } catch(e) {
-            console.log('YouTube Player init:', e);
-        }
-    }
-
-    function init() {
-        if (window.yt_player_plugin_final) return;
-
-        if (window.appready) {
-            startPlugin();
-        } else if (window.Lampa && Lampa.Listener) {
-            Lampa.Listener.follow('app', function(e) {
-                if (e.type === 'ready') startPlugin();
             });
-            setTimeout(function() {
-                if (!window.yt_player_plugin_final) startPlugin();
-            }, 3000);
-        } else {
-            setTimeout(init, 500);
+
+            return card;
+        }
+
+        this.create = function () {
+            return this.render();
+        };
+
+        this.render = function () {
+            // Заглушка для демонстрации (замени на свой API)
+            for(let i=0; i<12; i++) {
+                html.find('.yt-grid').append(buildCard({
+                    title: 'Как сделать плагин для Lampa - Часть ' + (i+1),
+                    channel: 'Твой Канал',
+                    img: 'https://picsum.photos/640/360?random='+i,
+                    duration: Math.floor(Math.random()*20)+1 + ':' + String(Math.floor(Math.random()*60)).padStart(2,'0'),
+                    views: Math.floor(Math.random()*1000000),
+                    time: '2 дня назад',
+                    url: 'https://r6---sn-googleqa...video_id=' + i // Заменить на реальный URL потока
+                }));
+            }
+            return html;
+        };
+
+        this.destroy = function () {
+            html.remove();
+        };
+    }
+
+    // ==========================================
+    // 3. КОМПОНЕНТ ПЛЕЕРА (С нормальным выбором звука)
+    // ==========================================
+    function YoutubePlayer(component) {
+        let video_data = component.movie; // Получаем данные, переданные из карточки
+        let html = $('<div style="width:100%; height:100%;"></div>');
+
+        this.create = function () {
+            return this.render();
+        };
+
+        this.render = function () {
+            // ИСПОЛЬЗУЕМ ШТАТНЫЙ ПЛЕЕР LAMPA
+            // Он уже содержит меню выбора качества, звуковых дорожек и субтитров
+            
+            let playlist = [{
+                title: video_data.title,
+                url: video_data.url, // Здесь должен быть прямой URL до потока (mp4, m3u8 и тд)
+                quality: '1080p', // Можно передать массив доступных качеств, если нужно
+                // tracks: [{...}] // Если есть аудио дорожки (переводы), передаем их тут
+            }];
+
+            Lampa.Player.play(playlist);
+            Lampa.Player.playlist(playlist);
+
+            // Так как плеер Lampa запускается поверх всего, этот компонент просто пустышка-обертка
+            return html;
+        };
+
+        this.destroy = function () {
+            html.remove();
+        };
+    }
+
+    // ==========================================
+    // 4. РЕГИСТРАЦИЯ В LAMPA
+    // ==========================================
+    
+    // Регистрируем компоненты
+    Lampa.Component.add('youtube_main', YoutubeMain);
+    Lampa.Component.add('youtube_player', YoutubePlayer);
+
+    // Добавляем кнопку в главное меню
+    function addToMenu() {
+        if (Lampa.Manifest && Lampa.Manifest.plugins) {
+            // Стандартный путь для новых версий Lampa
+            Lampa.MainMenu.add({
+                name: 'YouTube',
+                icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 15l5.19-3L10 9v6m11.56-7.83c.13.47.22 1.1.28 1.9.07.8.1 1.49.1 2.09L22 12c0 2.19-.16 3.8-.44 4.83-.25.9-.83 1.48-1.73 1.73-.47.13-1.33.22-2.65.28-1.3.07-2.49.1-3.59.1L12 19c-4.19 0-6.8-.16-7.83-.44-.9-.25-1.48-.83-1.73-1.73-.13-.47-.22-1.1-.28-1.9-.07-.8-.1-1.49-.1-2.09L2 12c0-2.19.16-3.8.44-4.83.25-.9.83-1.48 1.73-1.73.47-.13 1.33-.22 2.65-.28 1.3-.07 2.49-.1 3.59-.1L12 5c4.19 0 6.8.16 7.83.44.9.25 1.48.83 1.73 1.73z"/></svg>',
+                onSelect: function () {
+                    Lampa.Activity.push({
+                        url: '',
+                        title: 'YouTube',
+                        component: 'youtube_main',
+                        page: 1
+                    });
+                }
+            });
         }
     }
 
-    init();
+    // Ждем загрузку приложения
+    if (Lampa.MainMenu) {
+        addToMenu();
+    } else {
+        Lampa.Listener.follow('app', function (e) {
+            if (e.type === 'ready') addToMenu();
+        });
+    }
+
 })();
