@@ -255,9 +255,9 @@
             '               transform 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;',
             '}',
 
-            /* Без фокуса — лёгкий полупрозрачный фон */
+            /* Без фокуса — фона нет вообще, как в оригинале YouTube */
             '.player:not(.iptv) .player-panel__playpause:not(.focus) {',
-            '    background: rgba(255, 255, 255, 0.08) !important;',
+            '    background: transparent !important;',
             '}',
 
             /**
@@ -328,20 +328,19 @@
             '    letter-spacing: 0.01em !important;',
             '}',
 
-            /* Основной заголовок (название фильма/сериала) */
+            /* Основной заголовок — в YouTube это маленький однострочный
+               текст, а не крупный заголовок на полэкрана */
             '.player:not(.iptv) .player-info__title {',
-            '    font-size: 2.2em !important;',
-            '    font-weight: 700 !important;',
-            '    line-height: 1.3 !important;',
-            '    width: 60% !important;',
-            '    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6) !important;',
+            '    font-size: 1.3em !important;',
+            '    font-weight: 500 !important;',
+            '    line-height: 1.4 !important;',
+            '    width: 70% !important;',
+            '    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6) !important;',
             '    overflow: hidden !important;',
             '    text-overflow: ellipsis !important;',
-            '    display: -webkit-box !important;',
-            '    -webkit-line-clamp: 2 !important;',
-            '    line-clamp: 2 !important;',
-            '    -webkit-box-orient: vertical !important;',
-            '    letter-spacing: -0.01em !important;',
+            '    white-space: nowrap !important;',
+            '    display: block !important;',
+            '    letter-spacing: normal !important;',
             '}',
 
             /* Значения метаданных */
@@ -353,11 +352,14 @@
             '    font-weight: 600 !important;',
             '}',
 
-            /* Время — позиция справа вверху */
+            /* Время — в YouTube это мелкий приглушённый текст */
             '.player:not(.iptv) .player-info__time {',
             '    position: absolute !important;',
             '    top: 0.8em !important;',
             '    right: 0 !important;',
+            '    font-size: 0.85em !important;',
+            '    opacity: 0.75 !important;',
+            '    font-variant-numeric: tabular-nums !important;',
             '}',
 
             /* Строка времени над кнопками */
@@ -387,16 +389,19 @@
              *  — Визуальное разделение функциональных групп
              * ------------------------------------------------------- */
 
+            /* В YouTube кнопки НЕ группируются в подсвеченные "таблетки" —
+               они просто идут в ряд без общего фона. Оставляем контейнер
+               только как flex-обёртку для расстановки */
             '.player:not(.iptv) .player-panel__box-buttons {',
             '    flex-shrink: 0 !important;',
             '    display: flex !important;',
-            '    background: rgba(255, 255, 255, 0.08) !important;',
-            '    border-radius: 4em !important;',
-            '    transition: background-color 0.2s ease !important;',
+            '    align-items: center !important;',
+            '    background: transparent !important;',
+            '    border-radius: 0 !important;',
             '}',
 
             '.player:not(.iptv) .player-panel__box-buttons + .player-panel__box-buttons {',
-            '    margin-left: 0.5em !important;',
+            '    margin-left: 0.2em !important;',
             '}',
 
 
@@ -529,10 +534,8 @@
             '    outline-offset: 2px !important;',
             '}',
 
-            /* Фокус на группе кнопок */
-            '.player:not(.iptv) .player-panel__box-buttons:has(.focus) {',
-            '    background: rgba(255, 255, 255, 0.15) !important;',
-            '}',
+            /* Группа кнопок больше не имеет собственного фона —
+               подсветку убираем, фокус виден по самой кнопке */
 
             /* Фокус на качестве */
             '.player:not(.iptv) .player-panel__quality.focus {',
@@ -561,10 +564,7 @@
             '    transform: scale(1.05) !important;',
             '}',
 
-            /* Hover на группе кнопок */
-            '.player:not(.iptv) .player-panel__box-buttons:hover {',
-            '    background: rgba(255, 255, 255, 0.12) !important;',
-            '}',
+            /* Группа кнопок прозрачна — hover не нужен на уровне группы */
 
 
             /* -------------------------------------------------------
@@ -640,65 +640,25 @@
 
 
             /* -------------------------------------------------------
-             *  1.11 BACKDROP-BLUR — Для поддерживающих платформ
+             *  1.11 БЕЗ СТЕКЛЯННЫХ ЭФФЕКТОВ
              *
-             *  Стеклянный эффект (glassmorphism) добавляет
-             *  премиальности. Применяется только на платформах,
-             *  которые поддерживают backdrop-filter без
-             *  проседания производительности.
+             *  В настоящем YouTube-плеере нет glassmorphism/blur —
+             *  элементы либо прозрачные, либо с плотным сплошным
+             *  тёмным фоном. Убрали backdrop-filter полностью,
+             *  оставили обычные полупрозрачные/сплошные фоны там,
+             *  где они нужны для читаемости (пауза, загрузка,
+             *  оверлей громкости).
              * ------------------------------------------------------- */
 
-            /* Платформы с поддержкой blur */
-            'body.platform--browser .player:not(.iptv) .player-panel__box-buttons,',
-            'body.platform--browser .player:not(.iptv) .player-panel__playpause:not(.focus),',
-            'body.platform--browser .player:not(.iptv) .player-info__values .value--size span,',
-            'body.platform--nw .player:not(.iptv) .player-panel__box-buttons,',
-            'body.platform--nw .player:not(.iptv) .player-panel__playpause:not(.focus),',
-            'body.platform--nw .player:not(.iptv) .player-info__values .value--size span,',
-            'body.glass--style.platform--apple .player:not(.iptv) .player-panel__box-buttons,',
-            'body.glass--style.platform--apple .player:not(.iptv) .player-panel__playpause:not(.focus),',
-            'body.glass--style.platform--apple .player:not(.iptv) .player-info__values .value--size span,',
-            'body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__box-buttons,',
-            'body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__playpause:not(.focus),',
-            'body.glass--style.platform--apple_tv .player:not(.iptv) .player-info__values .value--size span,',
-            'body.glass--style.platform--android .player:not(.iptv) .player-panel__box-buttons,',
-            'body.glass--style.platform--android .player:not(.iptv) .player-panel__playpause:not(.focus),',
-            'body.glass--style.platform--android .player:not(.iptv) .player-info__values .value--size span {',
-            '    -webkit-backdrop-filter: blur(1.2em) saturate(1.2) !important;',
-            '    backdrop-filter: blur(1.2em) saturate(1.2) !important;',
+            '.player:not(.iptv) .player-video__paused,',
+            '.player:not(.iptv) .player-video__loader {',
+            '    background-color: rgba(0, 0, 0, 0.5) !important;',
             '}',
 
-            /* Blur для индикаторов паузы и загрузки */
-            'body.platform--browser .normalization,',
-            'body.platform--browser .player-video__paused,',
-            'body.platform--browser .player-video__loader,',
-            'body.platform--nw .normalization,',
-            'body.platform--nw .player-video__paused,',
-            'body.platform--nw .player-video__loader,',
-            'body.glass--style.platform--apple .normalization,',
-            'body.glass--style.platform--apple .player-video__paused,',
-            'body.glass--style.platform--apple .player-video__loader,',
-            'body.glass--style.platform--apple_tv .normalization,',
-            'body.glass--style.platform--apple_tv .player-video__paused,',
-            'body.glass--style.platform--apple_tv .player-video__loader,',
-            'body.glass--style.platform--android .normalization,',
-            'body.glass--style.platform--android .player-video__paused,',
-            'body.glass--style.platform--android .player-video__loader {',
-            '    background-color: rgba(0, 0, 0, 0.3) !important;',
-            '    -webkit-backdrop-filter: blur(1.2em) saturate(1.2) !important;',
-            '    backdrop-filter: blur(1.2em) saturate(1.2) !important;',
+            '.yt-volume-overlay {',
+            '    background: rgba(0, 0, 0, 0.8) !important;',
             '}',
 
-            /* Blur для оверлея громкости */
-            'body.platform--browser .yt-volume-overlay,',
-            'body.platform--nw .yt-volume-overlay,',
-            'body.glass--style.platform--apple .yt-volume-overlay,',
-            'body.glass--style.platform--apple_tv .yt-volume-overlay,',
-            'body.glass--style.platform--android .yt-volume-overlay {',
-            '    -webkit-backdrop-filter: blur(1.5em) saturate(1.3) !important;',
-            '    backdrop-filter: blur(1.5em) saturate(1.3) !important;',
-            '    background: rgba(0, 0, 0, 0.6) !important;',
-            '}',
 
 
             /* -------------------------------------------------------
