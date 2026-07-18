@@ -1,332 +1,1125 @@
 (function () {
     'use strict';
 
-    // ============================================================
-    //  YOUTUBE PLAYER PLUS — стилизация встроенного плеера Lampa
-    //  под интерфейс YouTube: прогресс-бар, громкость, кнопки.
-    //  Работает на: Smart TV (пульт), ПК (мышь+клавиатура), Mobile (тач)
-    // ============================================================
+    /**
+     * ============================================================
+     *  ПЛАГИН СТИЛИЗАЦИИ ПЛЕЕРА LAMPA — СТИЛЬ YOUTUBE
+     * ============================================================
+     *
+     *  Описание:
+     *    Полная CSS-стилизация встроенного плеера Lampa для
+     *    придания ему внешнего вида современного YouTube-плеера.
+     *    Включает: прогресс-бар, кнопки управления, оверлей
+     *    громкости, градиентный фон и кроссплатформенную
+     *    поддержку (Smart TV / ПК / Мобильные).
+     *
+     *  Поддерживаемые платформы:
+     *    — Smart TV: навигация пультом, стрелки + OK,
+     *      чёткий фокус (.focus) на элементах
+     *    — ПК: реакция на :hover, плавные анимации,
+     *      перетаскивание ползунков мышью
+     *    — Мобильные: увеличенные зоны тапа,
+     *      обработка сенсорных событий
+     *
+     *  Примечание:
+     *    Все стили используют !important для надёжной
+     *    инъекции поверх встроенных стилей Lampa.
+     *    Плагин НЕ содержит логику парсинга или
+     *    получения ссылок — только UI/UX.
+     * ============================================================
+     */
 
     function startPlugin() {
+        /**
+         * Проверяем условия запуска:
+         * — Пропускаем мобильную версию Lampa (у неё свой плеер)
+         * — Пропускаем слишком новые версии (могут быть несовместимы)
+         */
+        if (Lampa.Platform.screen('mobile') || Lampa.Manifest.app_digital > 328) return;
 
-        // Изначально в базовом плагине плеер отключался на мобилках —
-        // здесь убираем это ограничение, т.к. нам нужен тач-контроль.
-        // Оставляем только проверку версии приложения (совместимость).
-        if (Lampa.Manifest.app_digital > 328) return;
+        /* ===========================================================
+         *  РАЗДЕЛ 1: ОСНОВНЫЕ CSS-СТИЛИ
+         *  
+         *  Структура стилей:
+         *    1.1 — Оверлей и градиентный фон
+         *    1.2 — Прогресс-бар (таймлайн) в стиле YouTube
+         *    1.3 — Кнопки управления (play, next, prev и т.д.)
+         *    1.4 — Информационная панель (название, время)
+         *    1.5 — Группы кнопок (pill-shaped контейнеры)
+         *    1.6 — Индикаторы паузы и загрузки
+         *    1.7 — Кастомный оверлей громкости
+         *    1.8 — Адаптация для ТВ (фокус-состояния)
+         *    1.9 — Адаптация для ПК (hover-эффекты)
+         *    1.10 — Адаптация для мобильных (увеличенные тапы)
+         *    1.11 — Backdrop-blur для поддерживающих платформ
+         *    1.12 — Анимации
+         * =========================================================== */
 
-        var is_touch_device = ('ontouchstart' in window) || Lampa.Platform.screen('mobile');
+        var styles = [
 
-        // ------------------------------------------------------
-        // 1. БАЗОВЫЕ СТИЛИ (адаптированы из оригинального плагина)
-        // ------------------------------------------------------
-        $('body').append(
-            '\n        <style>\n' +
-            '        .player-video__overlay{display:none;background:linear-gradient(to bottom,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.85) 100%);position:absolute;top:0;left:0;width:100%;height:100%}' +
-            '.player:not(.iptv) .player-panel,.player:not(.iptv) .player-info,.player:not(.iptv) .player-footer{background:transparent !important;-webkit-backdrop-filter:unset !important;backdrop-filter:unset !important}' +
-            '.player:not(.iptv) .player-panel__body,.player:not(.iptv) .player-info__body,.player:not(.iptv) .player-footer__body{padding:0}' +
-            '.player:not(.iptv) .player-footer__row{padding:0}' +
-            '.player:not(.iptv) .head-backward{display:none !important}' +
-            '.player:not(.iptv) .player-info__body{padding-left:0 !important;position:relative}' +
-            '.player:not(.iptv) .player-info__name{font-size:1.2em;text-shadow:0 0 .2em rgba(0,0,0,0.5)}' +
-            '.player:not(.iptv) .player-info__title{font-size:2.4em;font-weight:600;line-height:1.4;width:60%;text-shadow:0 0 .2em rgba(0,0,0,0.5);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}' +
-            '.player:not(.iptv) .player-info__values{text-shadow:0 0 .2em rgba(0,0,0,0.5)}' +
-            '.player:not(.iptv) .player-info__values .value--name span{font-weight:600}' +
-            '.player:not(.iptv) .player-info__time{position:absolute;top:.8em;right:0}' +
-            '.player:not(.iptv) .player-panel .button{padding:.9em;width:3em;height:3em;border-radius:50%;transition:transform .15s ease,background .15s ease}' +
-            '.player:not(.iptv) .player-panel .button>svg{width:1.2em;height:1.2em}' +
-            '.player:not(.iptv) .player-panel .button+.button{margin-left:0}' +
-            '.player:not(.iptv) .player-panel__playpause{margin:0;padding:1em !important}' +
-            '.player:not(.iptv) .player-panel__playpause:not(.focus){background:rgba(255,255,255,0.1)}' +
-            '.player:not(.iptv) .player-panel__quality{border-radius:5em !important;padding:0 1em !important}' +
-            '.player:not(.iptv) .player-panel__timeline{margin-bottom:1em}' +
-            '.player:not(.iptv) .player-panel__line-one{margin-bottom:1em;position:relative;z-index:2;text-shadow:0 0 .2em rgba(0,0,0,0.5)}' +
-            '.player:not(.iptv) .player-panel__box-buttons{flex-shrink:0;display:flex;align-items:center;background:rgba(255,255,255,0.1);border-radius:4em}' +
-            '.player:not(.iptv) .player-panel__box-buttons+.player-panel__box-buttons{margin-left:.5em}' +
-            '.player:not(.iptv) .player-panel__next,.player:not(.iptv) .player-panel__prev{padding:1.1em !important}' +
-            '.player:not(.iptv) .player-panel__next>svg,.player:not(.iptv) .player-panel__prev>svg{width:.8em;height:.8em}' +
-            '.player:not(.iptv) .player-panel__playlist{text-align:center}' +
-            '.player:not(.iptv) .player-panel__playlist>svg{width:1em !important}' +
-            '.player:not(.iptv) .player-video__paused,.player:not(.iptv) .player-video__loader{background-color:rgba(255,255,255,0.1)}' +
-            '.player:not(.iptv) .player-info__values .value--size span{background:rgba(255,255,255,0.1);border-radius:1em}' +
-            '.player:not(.iptv).player--panel-visible .player-video__overlay{display:block;animation:animation-opacity .3s}' +
+            /* -------------------------------------------------------
+             *  1.1 ОВЕРЛЕЙ — Градиентный фон поверх видео
+             *  
+             *  Глубокий кинематографический градиент:
+             *  — Лёгкое затемнение сверху (для заголовка)
+             *  — Прозрачный центр (видео не перекрывается)
+             *  — Плотное затемнение снизу (для контролов)
+             *  Это классический YouTube-приём для читаемости UI
+             * ------------------------------------------------------- */
+            '.player-video__overlay {',
+            '    display: none !important;',
+            '    position: absolute !important;',
+            '    top: 0 !important;',
+            '    left: 0 !important;',
+            '    width: 100% !important;',
+            '    height: 100% !important;',
+            '    pointer-events: none !important;',
+            /* Многослойный градиент для глубины */
+            '    background: linear-gradient(',
+            '        to bottom,',
+            '        rgba(0, 0, 0, 0.7) 0%,',       /* Верх: затемнение для заголовка */
+            '        rgba(0, 0, 0, 0.0) 15%,',       /* Быстро прозрачнеет */
+            '        rgba(0, 0, 0, 0.0) 50%,',       /* Центр полностью прозрачен */
+            '        rgba(0, 0, 0, 0.0) 60%,',       /* Нижняя граница прозрачности */
+            '        rgba(0, 0, 0, 0.55) 80%,',      /* Начало затемнения для контролов */
+            '        rgba(0, 0, 0, 0.85) 100%',      /* Плотное затемнение внизу */
+            '    ) !important;',
+            '}',
 
-            /* --------------------------------------------------
-               2. ПРОГРЕСС-БАР В СТИЛЕ YOUTUBE — тонкий, красный,
-               утолщается при наведении/фокусе, с "шариком"-ползунком
-            -------------------------------------------------- */
-            '.player:not(.iptv) .player-panel__timeline{height:4px !important;background:rgba(255,255,255,.25) !important;border-radius:3px !important;cursor:pointer;position:relative;transition:height .15s ease;touch-action:none}' +
-            '.player:not(.iptv) .player-panel__timeline:hover,.player:not(.iptv) .player-panel__timeline.focus,.player:not(.iptv) .player-panel__timeline.player-panel__timeline--drag{height:7px !important}' +
-            '.player:not(.iptv) .player-panel__position{background:#ff0000 !important;border-radius:3px !important;height:100% !important;position:relative}' +
-            '.player:not(.iptv) .player-panel__position>div{background:transparent !important}' +
-            '.player:not(.iptv) .player-panel__position::after{content:"";position:absolute;right:-6px;top:50%;width:13px;height:13px;border-radius:50%;background:#ff0000;box-shadow:0 0 4px rgba(0,0,0,.6);transform:translateY(-50%) scale(0);transition:transform .15s ease}' +
-            '.player:not(.iptv) .player-panel__timeline:hover .player-panel__position::after,.player:not(.iptv) .player-panel__timeline.focus .player-panel__position::after,.player:not(.iptv) .player-panel__timeline--drag .player-panel__position::after{transform:translateY(-50%) scale(1)}' +
+            /* Показываем оверлей только когда панель видна */
+            '.player:not(.iptv).player--panel-visible .player-video__overlay {',
+            '    display: block !important;',
+            '    animation: yt-fade-in 0.3s ease-out !important;',
+            '}',
 
-            /* --------------------------------------------------
-               3. СЛАЙДЕР ГРОМКОСТИ (наш собственный компонент) —
-               горизонтальная полоса рядом с кнопкой mute, как в YT
-            -------------------------------------------------- */
-            '.yt-volume{display:flex;align-items:center;height:3em;padding:0 .6em 0 .2em;flex-shrink:0}' +
-            '.yt-volume__icon{width:3em;height:3em;display:flex;align-items:center;justify-content:center;border-radius:50%;flex-shrink:0;cursor:pointer;transition:background .15s ease,transform .15s ease}' +
-            '.yt-volume__icon:hover,.yt-volume__icon.focus{background:rgba(255,255,255,.15)}' +
-            '.yt-volume__icon.focus{transform:scale(1.08);outline:.15em solid rgba(255,255,255,.9);outline-offset:-.1em}' +
-            '.yt-volume__icon svg{width:1.3em;height:1.3em}' +
-            '.yt-volume__track-wrap{width:0;overflow:hidden;transition:width .2s ease;display:flex;align-items:center}' +
-            '.yt-volume:hover .yt-volume__track-wrap,.yt-volume.yt-volume--active .yt-volume__track-wrap,.yt-volume__track-wrap.focus{width:6em}' +
-            /* На ТВ громкость всегда видна (наведения мышью нет) */
-            'body.platform--tv .yt-volume__track-wrap,body.platform--android .yt-volume__track-wrap{width:6em}' +
-            '.yt-volume__track{position:relative;width:6em;height:4px;border-radius:3px;background:rgba(255,255,255,.25);cursor:pointer;touch-action:none}' +
-            '.yt-volume__fill{position:absolute;left:0;top:0;height:100%;border-radius:3px;background:#fff}' +
-            '.yt-volume__thumb{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 0 4px rgba(0,0,0,.6);transform:translate(-50%,-50%) scale(0);transition:transform .15s ease}' +
-            '.yt-volume__track:hover .yt-volume__thumb,.yt-volume__track.focus .yt-volume__thumb,.yt-volume__track--drag .yt-volume__thumb{transform:translate(-50%,-50%) scale(1)}' +
-            '.yt-volume__tooltip{position:absolute;bottom:1.6em;left:50%;transform:translateX(-50%);background:rgba(11,13,16,.9);color:#fff;font-size:.85em;padding:.2em .6em;border-radius:.4em;opacity:0;pointer-events:none;transition:opacity .15s ease;white-space:nowrap}' +
-            '.yt-volume__tooltip.show{opacity:1}' +
 
-            /* --------------------------------------------------
-               4. АДАПТАЦИЯ ПОД ТАЧ (мобильные) — крупнее кнопки/зоны нажатия
-            -------------------------------------------------- */
-            'body.platform--mobile .player:not(.iptv) .player-panel .button,body.platform--android.layer--touch .player:not(.iptv) .player-panel .button{width:3.6em;height:3.6em;padding:1em}' +
-            'body.platform--mobile .player:not(.iptv) .player-panel__timeline,body.platform--android.layer--touch .player:not(.iptv) .player-panel__timeline{height:8px !important}' +
-            'body.platform--mobile .yt-volume__track,body.platform--android.layer--touch .yt-volume__track{height:6px}' +
-            'body.platform--mobile .yt-volume__track-wrap,body.platform--android.layer--touch .yt-volume__track-wrap{width:6em !important}' +
+            /* -------------------------------------------------------
+             *  1.2 ПРОГРЕСС-БАР (ТАЙМЛАЙН) — Стиль YouTube
+             *
+             *  Ключевые особенности:
+             *  — Тонкая полоса (3px) по умолчанию
+             *  — Утолщается до 5px при наведении/фокусе
+             *  — Красный цвет (#FF0000) — фирменный YouTube
+             *  — Круглый скраббер (точка) появляется при взаимодействии
+             *  — Буфер — полупрозрачный белый
+             *  — Плавные transition для всех изменений
+             * ------------------------------------------------------- */
 
-            /* --------------------------------------------------
-               5. ЧЁТКИЙ ФОКУС ДЛЯ ТВ (пульт) — outline + масштаб
-            -------------------------------------------------- */
-            '.player:not(.iptv) .player-panel .button.focus{outline:.15em solid #fff;outline-offset:-.1em;transform:scale(1.08);background:rgba(255,255,255,.18)}' +
-            '.player:not(.iptv) .player-panel__timeline.focus{box-shadow:0 0 0 .12em rgba(255,255,255,.6)}' +
+            /* Контейнер таймлайна */
+            '.player:not(.iptv) .player-panel__timeline {',
+            '    margin-bottom: 0.8em !important;',
+            '    height: 3px !important;',
+            '    background: rgba(255, 255, 255, 0.2) !important;',
+            '    border-radius: 1.5px !important;',
+            '    transition: height 0.15s cubic-bezier(0.4, 0, 0.2, 1),',
+            '               transform 0.15s cubic-bezier(0.4, 0, 0.2, 1) !important;',
+            '    cursor: pointer !important;',
+            '    position: relative !important;',
+            '    overflow: visible !important;',
+            '    z-index: 10 !important;',
+            '}',
 
-            '.normalization{background:rgba(255,255,255,0.1);border-radius:1em}' +
-            '.normalization canvas{border-radius:1em}' +
-            'body.platform--browser .player:not(.iptv) .player-panel__box-buttons,body.platform--browser .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--browser .player:not(.iptv) .player-info__values .value--size span,body.platform--nw .player:not(.iptv) .player-panel__box-buttons,body.platform--nw .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--nw .player:not(.iptv) .player-info__values .value--size span{backdrop-filter:blur(1em);-webkit-backdrop-filter:blur(1em)}' +
-            'body.platform--browser .normalization,body.platform--browser .player-video__paused,body.platform--browser .player-video__loader,body.platform--nw .normalization,body.platform--nw .player-video__paused,body.platform--nw .player-video__loader{background-color:rgba(255,255,255,0.1);backdrop-filter:blur(1em);-webkit-backdrop-filter:blur(1em)}' +
-            '</style>\n    '
-        );
+            /* Утолщение при наведении мышью (ПК) */
+            '.player:not(.iptv) .player-panel__timeline:hover {',
+            '    height: 5px !important;',
+            '}',
 
-        // ------------------------------------------------------
-        //  РАЗМЕТКА (перестановка элементов, как в оригинале)
-        // ------------------------------------------------------
+            /* Утолщение при фокусе (ТВ — навигация пультом) */
+            '.player:not(.iptv) .player-panel__timeline.focus {',
+            '    height: 5px !important;',
+            '}',
+
+            /* Заполненная часть прогресс-бара — красная */
+            '.player:not(.iptv) .player-panel__position {',
+            '    background: transparent !important;',
+            '    height: 100% !important;',
+            '    border-radius: 1.5px !important;',
+            '    position: relative !important;',
+            '    overflow: visible !important;',
+            '}',
+
+            /* Внутренний div — основная красная полоса */
+            '.player:not(.iptv) .player-panel__position > div {',
+            '    background: #FF0000 !important;',
+            '    height: 100% !important;',
+            '    border-radius: 1.5px !important;',
+            '    position: relative !important;',
+            '    transition: background-color 0.2s ease !important;',
+            '}',
+
+            /**
+             * Скраббер (круглая точка на конце прогресс-бара)
+             * — По умолчанию скрыт (scale(0))
+             * — Появляется при hover/focus (scale(1))
+             * — Красный цвет, тень для контраста
+             */
+            '.player:not(.iptv) .player-panel__position > div::after {',
+            '    content: "" !important;',
+            '    display: block !important;',
+            '    width: 14px !important;',
+            '    height: 14px !important;',
+            '    background: #FF0000 !important;',
+            '    border-radius: 50% !important;',
+            '    position: absolute !important;',
+            '    right: -7px !important;',
+            '    top: 50% !important;',
+            '    transform: translateY(-50%) scale(0) !important;',
+            '    transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1) !important;',
+            '    box-shadow: 0 0 4px rgba(0, 0, 0, 0.4) !important;',
+            '    z-index: 5 !important;',
+            '}',
+
+            /* Скраббер появляется при наведении мыши на таймлайн */
+            '.player:not(.iptv) .player-panel__timeline:hover .player-panel__position > div::after {',
+            '    transform: translateY(-50%) scale(1) !important;',
+            '}',
+
+            /* Скраббер появляется при фокусе на ТВ */
+            '.player:not(.iptv) .player-panel__timeline.focus .player-panel__position > div::after {',
+            '    transform: translateY(-50%) scale(1) !important;',
+            '}',
+
+            /* Когда НЕ в фокусе — скраббер скрыт (переопределяем дефолт Lampa) */
+            '.player:not(.iptv) .player-panel__timeline:not(.focus):not(:hover) .player-panel__position > div::after {',
+            '    transform: translateY(-50%) scale(0) !important;',
+            '}',
+
+
+            /* -------------------------------------------------------
+             *  1.3 КНОПКИ УПРАВЛЕНИЯ — Современный минималистичный стиль
+             *
+             *  Как в YouTube:
+             *  — Белые иконки без фона
+             *  — Округлые, хорошо читаемые
+             *  — Плавные переходы при взаимодействии
+             *  — Масштабирование при фокусе на ТВ
+             * ------------------------------------------------------- */
+
+            /* Убираем фон у панелей (прозрачность) */
+            '.player:not(.iptv) .player-panel,',
+            '.player:not(.iptv) .player-info,',
+            '.player:not(.iptv) .player-footer {',
+            '    background: transparent !important;',
+            '    -webkit-backdrop-filter: unset !important;',
+            '    backdrop-filter: unset !important;',
+            '}',
+
+            /* Убираем внутренние отступы для полноширинного расположения */
+            '.player:not(.iptv) .player-panel__body,',
+            '.player:not(.iptv) .player-info__body,',
+            '.player:not(.iptv) .player-footer__body {',
+            '    padding: 0 !important;',
+            '}',
+
+            '.player:not(.iptv) .player-footer__row {',
+            '    padding: 0 !important;',
+            '}',
+
+            /* Скрываем кнопку "Назад" (в YouTube её нет в плеере) */
+            '.player:not(.iptv) .head-backward {',
+            '    display: none !important;',
+            '}',
+
+            /* Базовый стиль кнопки */
+            '.player:not(.iptv) .player-panel .button {',
+            '    padding: 0.9em !important;',
+            '    width: 3em !important;',
+            '    height: 3em !important;',
+            '    border-radius: 50% !important;',
+            '    transition: background-color 0.2s ease,',
+            '               transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),',
+            '               opacity 0.2s ease !important;',
+            '    position: relative !important;',
+            '    overflow: hidden !important;',
+            '}',
+
+            /* Размер иконок внутри кнопок */
+            '.player:not(.iptv) .player-panel .button > svg {',
+            '    width: 1.2em !important;',
+            '    height: 1.2em !important;',
+            '    transition: transform 0.15s ease !important;',
+            '}',
+
+            /* Убираем дефолтные отступы между кнопками */
+            '.player:not(.iptv) .player-panel .button + .button {',
+            '    margin-left: 0 !important;',
+            '}',
+
+            /* ---- Кнопка Play/Pause — главная, акцентная ---- */
+            '.player:not(.iptv) .player-panel__playpause {',
+            '    margin: 0 !important;',
+            '    padding: 1em !important;',
+            '    border-radius: 50% !important;',
+            '    transition: background-color 0.2s ease,',
+            '               transform 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;',
+            '}',
+
+            /* Без фокуса — лёгкий полупрозрачный фон */
+            '.player:not(.iptv) .player-panel__playpause:not(.focus) {',
+            '    background: rgba(255, 255, 255, 0.08) !important;',
+            '}',
+
+            /**
+             * Фокус на кнопке Play/Pause (ТВ):
+             * — Белый полупрозрачный фон
+             * — Лёгкое увеличение для визуальной обратной связи
+             */
+            '.player:not(.iptv) .player-panel__playpause.focus {',
+            '    background: rgba(255, 255, 255, 0.2) !important;',
+            '    transform: scale(1.1) !important;',
+            '}',
+
+            /* ---- Кнопка качества (720p, 1080p и т.д.) ---- */
+            '.player:not(.iptv) .player-panel__quality {',
+            '    border-radius: 5em !important;',
+            '    padding: 0 1em !important;',
+            '    font-size: 0.85em !important;',
+            '    font-weight: 500 !important;',
+            '    letter-spacing: 0.02em !important;',
+            '}',
+
+            /* ---- Кнопки Next/Prev (следующий/предыдущий) ---- */
+            '.player:not(.iptv) .player-panel__next,',
+            '.player:not(.iptv) .player-panel__prev {',
+            '    padding: 1.1em !important;',
+            '}',
+
+            '.player:not(.iptv) .player-panel__next > svg,',
+            '.player:not(.iptv) .player-panel__prev > svg {',
+            '    width: 0.8em !important;',
+            '    height: 0.8em !important;',
+            '}',
+
+            /* ---- Кнопка плейлиста ---- */
+            '.player:not(.iptv) .player-panel__playlist {',
+            '    text-align: center !important;',
+            '}',
+
+            '.player:not(.iptv) .player-panel__playlist > svg {',
+            '    width: 1em !important;',
+            '}',
+
+            /* Анимация появления кнопки (trigger enter) */
+            '.player:not(.iptv) .player-panel .button.animate-trigger-enter {',
+            '    animation: yt-trigger-enter 0.2s forwards !important;',
+            '}',
+
+
+            /* -------------------------------------------------------
+             *  1.4 ИНФОРМАЦИОННАЯ ПАНЕЛЬ — Заголовок и метаданные
+             *
+             *  Расположение:
+             *  — Название сверху слева (как в YouTube)
+             *  — Текущее время справа
+             *  — Тени для читаемости на тёмном фоне
+             * ------------------------------------------------------- */
+
+            '.player:not(.iptv) .player-info__body {',
+            '    padding-left: 0 !important;',
+            '    position: relative !important;',
+            '}',
+
+            /* Подзаголовок (серия, эпизод) */
+            '.player:not(.iptv) .player-info__name {',
+            '    font-size: 1.1em !important;',
+            '    opacity: 0.8 !important;',
+            '    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7) !important;',
+            '    letter-spacing: 0.01em !important;',
+            '}',
+
+            /* Основной заголовок (название фильма/сериала) */
+            '.player:not(.iptv) .player-info__title {',
+            '    font-size: 2.2em !important;',
+            '    font-weight: 700 !important;',
+            '    line-height: 1.3 !important;',
+            '    width: 60% !important;',
+            '    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6) !important;',
+            '    overflow: hidden !important;',
+            '    text-overflow: ellipsis !important;',
+            '    display: -webkit-box !important;',
+            '    -webkit-line-clamp: 2 !important;',
+            '    line-clamp: 2 !important;',
+            '    -webkit-box-orient: vertical !important;',
+            '    letter-spacing: -0.01em !important;',
+            '}',
+
+            /* Значения метаданных */
+            '.player:not(.iptv) .player-info__values {',
+            '    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7) !important;',
+            '}',
+
+            '.player:not(.iptv) .player-info__values .value--name span {',
+            '    font-weight: 600 !important;',
+            '}',
+
+            /* Время — позиция справа вверху */
+            '.player:not(.iptv) .player-info__time {',
+            '    position: absolute !important;',
+            '    top: 0.8em !important;',
+            '    right: 0 !important;',
+            '}',
+
+            /* Строка времени над кнопками */
+            '.player:not(.iptv) .player-panel__line-one {',
+            '    margin-bottom: 0.8em !important;',
+            '    position: relative !important;',
+            '    z-index: 2 !important;',
+            '    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6) !important;',
+            '    font-variant-numeric: tabular-nums !important;',
+            '}',
+
+            /* Бейдж размера/качества в инфо */
+            '.player:not(.iptv) .player-info__values .value--size span {',
+            '    background: rgba(255, 255, 255, 0.12) !important;',
+            '    border-radius: 1em !important;',
+            '    padding: 0.2em 0.6em !important;',
+            '    font-size: 0.85em !important;',
+            '}',
+
+
+            /* -------------------------------------------------------
+             *  1.5 ГРУППЫ КНОПОК — Pill-shaped контейнеры
+             *
+             *  Кнопки группируются в "таблетки" (pills):
+             *  — Полупрозрачный фон с blur
+             *  — Скруглённые углы (border-radius: 4em)
+             *  — Визуальное разделение функциональных групп
+             * ------------------------------------------------------- */
+
+            '.player:not(.iptv) .player-panel__box-buttons {',
+            '    flex-shrink: 0 !important;',
+            '    display: flex !important;',
+            '    background: rgba(255, 255, 255, 0.08) !important;',
+            '    border-radius: 4em !important;',
+            '    transition: background-color 0.2s ease !important;',
+            '}',
+
+            '.player:not(.iptv) .player-panel__box-buttons + .player-panel__box-buttons {',
+            '    margin-left: 0.5em !important;',
+            '}',
+
+
+            /* -------------------------------------------------------
+             *  1.6 ИНДИКАТОРЫ ПАУЗЫ И ЗАГРУЗКИ
+             *
+             *  Полупрозрачный фон с blur для красивого
+             *  центрального индикатора
+             * ------------------------------------------------------- */
+
+            '.player:not(.iptv) .player-video__paused,',
+            '.player:not(.iptv) .player-video__loader {',
+            '    background-color: rgba(0, 0, 0, 0.35) !important;',
+            '    border-radius: 50% !important;',
+            '    transition: opacity 0.3s ease, transform 0.3s ease !important;',
+            '}',
+
+            /* Нормализация звука */
+            '.normalization {',
+            '    background: rgba(255, 255, 255, 0.1) !important;',
+            '    border-radius: 1em !important;',
+            '}',
+
+            '.normalization canvas {',
+            '    border-radius: 1em !important;',
+            '}',
+
+
+            /* -------------------------------------------------------
+             *  1.7 КАСТОМНЫЙ ОВЕРЛЕЙ ГРОМКОСТИ
+             *
+             *  Появляется при изменении громкости (стрелки на ТВ
+             *  или колёсико мыши на ПК). Стиль — как в YouTube:
+             *  — Вертикальная полоса справа
+             *  — Иконка динамика
+             *  — Плавное появление и исчезновение
+             *  — Процент громкости
+             * ------------------------------------------------------- */
+
+            /* Контейнер оверлея громкости */
+            '.yt-volume-overlay {',
+            '    position: absolute !important;',
+            '    top: 50% !important;',
+            '    right: 2.5em !important;',
+            '    transform: translateY(-50%) translateX(20px) !important;',
+            '    display: flex !important;',
+            '    flex-direction: column !important;',
+            '    align-items: center !important;',
+            '    gap: 0.8em !important;',
+            '    background: rgba(0, 0, 0, 0.75) !important;',
+            '    border-radius: 1em !important;',
+            '    padding: 1.2em 0.8em !important;',
+            '    opacity: 0 !important;',
+            '    transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;',
+            '    pointer-events: none !important;',
+            '    z-index: 100 !important;',
+            '    min-width: 3.5em !important;',
+            '}',
+
+            /* Видимое состояние оверлея */
+            '.yt-volume-overlay.yt-volume-visible {',
+            '    opacity: 1 !important;',
+            '    transform: translateY(-50%) translateX(0) !important;',
+            '}',
+
+            /* Иконка динамика */
+            '.yt-volume-overlay__icon {',
+            '    width: 2em !important;',
+            '    height: 2em !important;',
+            '    display: flex !important;',
+            '    align-items: center !important;',
+            '    justify-content: center !important;',
+            '}',
+
+            '.yt-volume-overlay__icon svg {',
+            '    width: 100% !important;',
+            '    height: 100% !important;',
+            '    fill: white !important;',
+            '}',
+
+            /* Вертикальная полоса громкости */
+            '.yt-volume-overlay__bar {',
+            '    width: 4px !important;',
+            '    height: 8em !important;',
+            '    background: rgba(255, 255, 255, 0.2) !important;',
+            '    border-radius: 2px !important;',
+            '    position: relative !important;',
+            '    overflow: hidden !important;',
+            '}',
+
+            /* Заполненная часть (белая, растёт снизу вверх) */
+            '.yt-volume-overlay__fill {',
+            '    position: absolute !important;',
+            '    bottom: 0 !important;',
+            '    left: 0 !important;',
+            '    width: 100% !important;',
+            '    background: white !important;',
+            '    border-radius: 2px !important;',
+            '    transition: height 0.15s cubic-bezier(0.4, 0, 0.2, 1) !important;',
+            '}',
+
+            /* Процент громкости */
+            '.yt-volume-overlay__value {',
+            '    font-size: 0.85em !important;',
+            '    font-weight: 600 !important;',
+            '    color: white !important;',
+            '    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5) !important;',
+            '    font-variant-numeric: tabular-nums !important;',
+            '}',
+
+
+            /* -------------------------------------------------------
+             *  1.8 АДАПТАЦИЯ ДЛЯ SMART TV — Фокус-состояния
+             *
+             *  На ТВ нет мыши — навигация пультом.
+             *  Класс .focus добавляется Lampa при перемещении
+             *  фокуса между элементами.
+             *
+             *  Принципы:
+             *  — Явный визуальный отклик (масштаб + свечение)
+             *  — Контрастный outline для чёткости
+             *  — Увеличенные элементы для видимости с дивана
+             * ------------------------------------------------------- */
+
+            /* Фокус на кнопках — масштабирование + подсветка */
+            '.player:not(.iptv) .player-panel .button.focus {',
+            '    background: rgba(255, 255, 255, 0.2) !important;',
+            '    transform: scale(1.15) !important;',
+            '    outline: 2px solid rgba(255, 255, 255, 0.6) !important;',
+            '    outline-offset: 2px !important;',
+            '}',
+
+            /* Фокус на группе кнопок */
+            '.player:not(.iptv) .player-panel__box-buttons:has(.focus) {',
+            '    background: rgba(255, 255, 255, 0.15) !important;',
+            '}',
+
+            /* Фокус на качестве */
+            '.player:not(.iptv) .player-panel__quality.focus {',
+            '    background: rgba(255, 255, 255, 0.25) !important;',
+            '    transform: scale(1.08) !important;',
+            '    outline: 2px solid rgba(255, 255, 255, 0.6) !important;',
+            '    outline-offset: 2px !important;',
+            '}',
+
+
+            /* -------------------------------------------------------
+             *  1.9 АДАПТАЦИЯ ДЛЯ ПК — Hover-эффекты
+             *
+             *  На ПК пользователь взаимодействует мышью.
+             *  Плавные hover-переходы, изменение прозрачности.
+             * ------------------------------------------------------- */
+
+            /* Hover на кнопках — лёгкая подсветка */
+            '.player:not(.iptv) .player-panel .button:hover {',
+            '    background: rgba(255, 255, 255, 0.15) !important;',
+            '}',
+
+            /* Hover на кнопке play/pause */
+            '.player:not(.iptv) .player-panel__playpause:hover {',
+            '    background: rgba(255, 255, 255, 0.2) !important;',
+            '    transform: scale(1.05) !important;',
+            '}',
+
+            /* Hover на группе кнопок */
+            '.player:not(.iptv) .player-panel__box-buttons:hover {',
+            '    background: rgba(255, 255, 255, 0.12) !important;',
+            '}',
+
+
+            /* -------------------------------------------------------
+             *  1.10 АДАПТАЦИЯ ДЛЯ МОБИЛЬНЫХ — Увеличенные тапы
+             *
+             *  На мобилках нужны большие зоны нажатия (min 44px).
+             *  Также увеличиваем прогресс-бар для удобного
+             *  перетаскивания пальцем.
+             * ------------------------------------------------------- */
+
+            '@media (max-width: 768px) {',
+            '    .player:not(.iptv) .player-panel .button {',
+            '        min-width: 44px !important;',
+            '        min-height: 44px !important;',
+            '        padding: 0.7em !important;',
+            '    }',
+            '',
+            '    /* Прогресс-бар толще на мобилках для удобства тапа */',
+            '    .player:not(.iptv) .player-panel__timeline {',
+            '        height: 5px !important;',
+            '    }',
+            '',
+            '    .player:not(.iptv) .player-panel__timeline:active {',
+            '        height: 8px !important;',
+            '    }',
+            '',
+            '    /* Скраббер всегда виден на мобилках */',
+            '    .player:not(.iptv) .player-panel__position > div::after {',
+            '        transform: translateY(-50%) scale(1) !important;',
+            '        width: 16px !important;',
+            '        height: 16px !important;',
+            '        right: -8px !important;',
+            '    }',
+            '',
+            '    /* Увеличенный тап на Play/Pause */',
+            '    .player:not(.iptv) .player-panel__playpause {',
+            '        padding: 1.2em !important;',
+            '    }',
+            '',
+            '    /* Заголовок меньше на мобилках */',
+            '    .player:not(.iptv) .player-info__title {',
+            '        font-size: 1.6em !important;',
+            '        width: 80% !important;',
+            '    }',
+            '',
+            '    /* Оверлей громкости адаптация */',
+            '    .yt-volume-overlay {',
+            '        right: 1em !important;',
+            '    }',
+            '',
+            '    .yt-volume-overlay__bar {',
+            '        height: 5em !important;',
+            '    }',
+            '}',
+
+            /* Экраны ТВ — крупные элементы */
+            '@media (min-width: 1920px) {',
+            '    .player:not(.iptv) .player-panel .button.focus {',
+            '        transform: scale(1.2) !important;',
+            '        outline-width: 3px !important;',
+            '    }',
+            '',
+            '    .player:not(.iptv) .player-panel__position > div::after {',
+            '        width: 18px !important;',
+            '        height: 18px !important;',
+            '        right: -9px !important;',
+            '    }',
+            '',
+            '    .player:not(.iptv) .player-panel__timeline.focus {',
+            '        height: 7px !important;',
+            '    }',
+            '}',
+
+
+            /* -------------------------------------------------------
+             *  1.11 BACKDROP-BLUR — Для поддерживающих платформ
+             *
+             *  Стеклянный эффект (glassmorphism) добавляет
+             *  премиальности. Применяется только на платформах,
+             *  которые поддерживают backdrop-filter без
+             *  проседания производительности.
+             * ------------------------------------------------------- */
+
+            /* Платформы с поддержкой blur */
+            'body.platform--browser .player:not(.iptv) .player-panel__box-buttons,',
+            'body.platform--browser .player:not(.iptv) .player-panel__playpause:not(.focus),',
+            'body.platform--browser .player:not(.iptv) .player-info__values .value--size span,',
+            'body.platform--nw .player:not(.iptv) .player-panel__box-buttons,',
+            'body.platform--nw .player:not(.iptv) .player-panel__playpause:not(.focus),',
+            'body.platform--nw .player:not(.iptv) .player-info__values .value--size span,',
+            'body.glass--style.platform--apple .player:not(.iptv) .player-panel__box-buttons,',
+            'body.glass--style.platform--apple .player:not(.iptv) .player-panel__playpause:not(.focus),',
+            'body.glass--style.platform--apple .player:not(.iptv) .player-info__values .value--size span,',
+            'body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__box-buttons,',
+            'body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__playpause:not(.focus),',
+            'body.glass--style.platform--apple_tv .player:not(.iptv) .player-info__values .value--size span,',
+            'body.glass--style.platform--android .player:not(.iptv) .player-panel__box-buttons,',
+            'body.glass--style.platform--android .player:not(.iptv) .player-panel__playpause:not(.focus),',
+            'body.glass--style.platform--android .player:not(.iptv) .player-info__values .value--size span {',
+            '    -webkit-backdrop-filter: blur(1.2em) saturate(1.2) !important;',
+            '    backdrop-filter: blur(1.2em) saturate(1.2) !important;',
+            '}',
+
+            /* Blur для индикаторов паузы и загрузки */
+            'body.platform--browser .normalization,',
+            'body.platform--browser .player-video__paused,',
+            'body.platform--browser .player-video__loader,',
+            'body.platform--nw .normalization,',
+            'body.platform--nw .player-video__paused,',
+            'body.platform--nw .player-video__loader,',
+            'body.glass--style.platform--apple .normalization,',
+            'body.glass--style.platform--apple .player-video__paused,',
+            'body.glass--style.platform--apple .player-video__loader,',
+            'body.glass--style.platform--apple_tv .normalization,',
+            'body.glass--style.platform--apple_tv .player-video__paused,',
+            'body.glass--style.platform--apple_tv .player-video__loader,',
+            'body.glass--style.platform--android .normalization,',
+            'body.glass--style.platform--android .player-video__paused,',
+            'body.glass--style.platform--android .player-video__loader {',
+            '    background-color: rgba(0, 0, 0, 0.3) !important;',
+            '    -webkit-backdrop-filter: blur(1.2em) saturate(1.2) !important;',
+            '    backdrop-filter: blur(1.2em) saturate(1.2) !important;',
+            '}',
+
+            /* Blur для оверлея громкости */
+            'body.platform--browser .yt-volume-overlay,',
+            'body.platform--nw .yt-volume-overlay,',
+            'body.glass--style.platform--apple .yt-volume-overlay,',
+            'body.glass--style.platform--apple_tv .yt-volume-overlay,',
+            'body.glass--style.platform--android .yt-volume-overlay {',
+            '    -webkit-backdrop-filter: blur(1.5em) saturate(1.3) !important;',
+            '    backdrop-filter: blur(1.5em) saturate(1.3) !important;',
+            '    background: rgba(0, 0, 0, 0.6) !important;',
+            '}',
+
+
+            /* -------------------------------------------------------
+             *  1.12 АНИМАЦИИ
+             *
+             *  Плавные CSS-анимации для:
+             *  — Появления оверлея (fade-in)
+             *  — Входа кнопок (trigger-enter)
+             *  — Пульсации при нажатии (pulse)
+             * ------------------------------------------------------- */
+
+            /* Плавное появление */
+            '@keyframes yt-fade-in {',
+            '    from { opacity: 0; }',
+            '    to   { opacity: 1; }',
+            '}',
+
+            /* Вход кнопки с масштабированием */
+            '@keyframes yt-trigger-enter {',
+            '    from {',
+            '        transform: scale(0.8);',
+            '        opacity: 0;',
+            '    }',
+            '    to {',
+            '        transform: scale(1);',
+            '        opacity: 1;',
+            '    }',
+            '}',
+
+            /* Совместимость со стандартными animation-* от Lampa */
+            '@keyframes animation-trigger-enter {',
+            '    from {',
+            '        transform: scale(0.8);',
+            '        opacity: 0;',
+            '    }',
+            '    to {',
+            '        transform: scale(1);',
+            '        opacity: 1;',
+            '    }',
+            '}',
+
+            '@keyframes animation-opacity {',
+            '    from { opacity: 0; }',
+            '    to   { opacity: 1; }',
+            '}',
+
+            /* Пульсация при нажатии (ripple-like эффект) */
+            '@keyframes yt-press {',
+            '    0%   { transform: scale(1); }',
+            '    50%  { transform: scale(0.9); }',
+            '    100% { transform: scale(1); }',
+            '}',
+
+            '.player:not(.iptv) .player-panel .button:active {',
+            '    animation: yt-press 0.15s ease !important;',
+            '}',
+
+            /* -------------------------------------------------------
+             *  ДОПОЛНИТЕЛЬНЫЕ СТИЛИ
+             *  — Скрытие встроенного индикатора громкости Lampa
+             *    (заменяем нашим кастомным)
+             * ------------------------------------------------------- */
+
+            /* Скрываем стандартный индикатор громкости Lampa,',
+             * если он есть — мы показываем свой оверлей */
+            '.player-video__volume-default {',
+            '    display: none !important;',
+            '}',
+
+        ''].join('\n');
+
+        /* ============================================================
+         *  Удаляем предыдущие стили (если плагин загружен повторно)
+         *  и вставляем новые в <body>
+         * ============================================================ */
+        $('#yt-player-style').remove();
+        $('body').append('<style id="yt-player-style">' + styles + '</style>');
+
+
+        /* ===========================================================
+         *  РАЗДЕЛ 2: РЕСТРУКТУРИЗАЦИЯ DOM
+         *
+         *  Перемещаем элементы плеера для соответствия
+         *  YouTube-лейауту:
+         *  — Оверлей после дисплея
+         *  — Таймлайн над кнопками
+         *  — Кнопки группируются в pill-контейнеры
+         *  — Заголовок выносится отдельно
+         * =========================================================== */
+
         var render = Lampa.Player.render();
+
+        /** Элемент заголовка (название фильма/сериала) */
         var title = $('<div class="player-info__title"></div>');
+
+        /** Элемент подзаголовка (серия/эпизод) */
         var value = $('<div class="value--name"><span></span></div>');
 
-        render.find('.player-video__display').after($('<div class="player-video__overlay"></div>'));
-        render.find('.player-panel__center').find('.button:not(.player-panel__playpause)').remove();
-        render.find('.player-panel__timeline').before(render.find('.player-panel__line-one'));
-        render.find('.player-info .player-info__line').before(title);
-        render.find('.value--size').after(value);
+        /**
+         * Создаём оверлей с градиентом и вставляем
+         * сразу после видео-дисплея
+         */
+        if (!render.find('.player-video__overlay').length) {
+            render.find('.player-video__display').after(
+                $('<div class="player-video__overlay"></div>')
+            );
+        }
 
+        /**
+         * Убираем лишние кнопки из центральной панели
+         * (в YouTube центр пуст — play/pause в левой части)
+         */
+        render.find('.player-panel__center')
+            .find('.button:not(.player-panel__playpause)')
+            .remove();
+
+        /**
+         * Переносим строку времени (01:23:45 / 02:00:00)
+         * ПЕРЕД таймлайном — как в YouTube
+         */
+        render.find('.player-panel__timeline').before(
+            render.find('.player-panel__line-one')
+        );
+
+        /**
+         * Добавляем элементы заголовка и подзаголовка
+         * в информационную панель
+         */
+        if (!render.find('.player-info__title').length) {
+            render.find('.player-info .player-info__line').before(title);
+        }
+
+        if (!render.find('.value--name').length) {
+            render.find('.value--size').after(value);
+        }
+
+        /**
+         * Группировка кнопок в pill-shaped контейнеры:
+         *
+         * Правая панель:
+         *   [audio/subs/tracks] [quality] [остальные кнопки]
+         *
+         * Левая панель:
+         *   [prev/play/next]
+         */
         var box = $('<div class="player-panel__box-buttons"></div>');
         var right_panel = render.find('.player-panel__right');
         var left_panel = render.find('.player-panel__left');
 
+        /* Создаём контейнеры для правой панели */
         var right_box_quality = box.clone();
         var right_box_main = box.clone();
         var right_box_audio = box.clone();
+
+        /* Контейнер для левой панели */
         var left_box_main = box.clone();
 
+        /* Собираем правую панель */
         right_panel.append(right_box_audio);
         right_panel.append(right_box_quality);
         right_panel.append(right_box_main);
 
+        /* Перемещаем кнопки в соответствующие контейнеры */
         right_box_main.append(right_panel.find('.button'));
         right_box_quality.append(right_panel.find('.player-panel__quality'));
         right_box_audio.append(right_panel.find('.player-panel__flow'));
         right_box_audio.append(right_panel.find('.player-panel__subs'));
         right_box_audio.append(right_panel.find('.player-panel__tracks'));
 
+        /* Собираем левую панель */
         left_panel.prepend(left_box_main);
         left_box_main.append(left_panel.find('.button'));
 
+
+        /* ===========================================================
+         *  РАЗДЕЛ 3: КАСТОМНЫЙ ОВЕРЛЕЙ ГРОМКОСТИ
+         *
+         *  Создаём красивый оверлей, который показывается
+         *  при изменении громкости. Отображает:
+         *  — Иконку динамика (меняется в зависимости от уровня)
+         *  — Вертикальную полосу заполнения
+         *  — Числовое значение в процентах
+         *
+         *  Работает на всех платформах:
+         *  — ТВ: реагирует на стрелки вверх/вниз
+         *  — ПК: реагирует на колёсико мыши
+         *  — Мобилки: реагирует на тач-события
+         * =========================================================== */
+
+        /**
+         * SVG-иконки динамика для разных уровней громкости
+         * Три варианта: выключен (mute), тихо (low), громко (high)
+         */
+        var volumeIcons = {
+            mute: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>',
+            low:  '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"/></svg>',
+            high: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>'
+        };
+
+        /**
+         * Создаём DOM-элемент оверлея громкости
+         * и добавляем его в контейнер плеера
+         */
+        var volumeOverlay = $(
+            '<div class="yt-volume-overlay">' +
+                '<div class="yt-volume-overlay__icon">' + volumeIcons.high + '</div>' +
+                '<div class="yt-volume-overlay__bar">' +
+                    '<div class="yt-volume-overlay__fill" style="height: 100%;"></div>' +
+                '</div>' +
+                '<div class="yt-volume-overlay__value">100</div>' +
+            '</div>'
+        );
+
+        /* Добавляем оверлей в рендер плеера (только если ещё не добавлен) */
+        if (!render.find('.yt-volume-overlay').length) {
+            render.append(volumeOverlay);
+        }
+
+        /** Таймер для автоскрытия оверлея громкости */
+        var volumeHideTimer = null;
+
+        /**
+         * Показывает оверлей громкости с текущим уровнем
+         *
+         * @param {number} level — уровень громкости от 0 до 1
+         * @param {boolean} muted — звук выключен (mute)
+         */
+        function showVolumeOverlay(level, muted) {
+            var overlay = render.find('.yt-volume-overlay');
+            if (!overlay.length) return;
+
+            /* Определяем иконку в зависимости от уровня */
+            var icon;
+            if (muted || level <= 0) {
+                icon = volumeIcons.mute;
+            } else if (level < 0.5) {
+                icon = volumeIcons.low;
+            } else {
+                icon = volumeIcons.high;
+            }
+
+            /* Обновляем содержимое оверлея */
+            overlay.find('.yt-volume-overlay__icon').html(icon);
+            overlay.find('.yt-volume-overlay__fill').css('height', (muted ? 0 : level * 100) + '%');
+            overlay.find('.yt-volume-overlay__value').text(muted ? '0' : Math.round(level * 100));
+
+            /* Показываем оверлей */
+            overlay.addClass('yt-volume-visible');
+
+            /* Сбрасываем таймер автоскрытия */
+            if (volumeHideTimer) clearTimeout(volumeHideTimer);
+
+            /**
+             * Автоскрытие через 1.5 секунды бездействия
+             * (как в YouTube)
+             */
+            volumeHideTimer = setTimeout(function () {
+                overlay.removeClass('yt-volume-visible');
+            }, 1500);
+        }
+
+        /**
+         * Отслеживаем изменения громкости через видео-элемент.
+         * Используем MutationObserver для обнаружения видео,
+         * так как оно может быть создано позже.
+         */
+        function attachVolumeListener() {
+            var video = render.find('video')[0];
+            if (video) {
+                /**
+                 * Слушаем нативное событие volumechange
+                 * HTML5 Video API. Срабатывает при любом
+                 * изменении громкости, включая mute/unmute.
+                 */
+                video.addEventListener('volumechange', function () {
+                    showVolumeOverlay(this.volume, this.muted);
+                });
+                return true;
+            }
+            return false;
+        }
+
+        /**
+         * Пробуем найти видео-элемент с интервалом.
+         * Останавливаемся, когда найдён или после 30 попыток
+         * (15 секунд). Это нужно потому, что видео может
+         * создаваться асинхронно после вызова Player.play().
+         */
+        var volumeAttachAttempts = 0;
+        var volumeAttachInterval = setInterval(function () {
+            volumeAttachAttempts++;
+            if (attachVolumeListener() || volumeAttachAttempts > 30) {
+                clearInterval(volumeAttachInterval);
+            }
+        }, 500);
+
+        /**
+         * Также слушаем событие старта плеера —
+         * при каждом новом воспроизведении переподключаем
+         * слушатель громкости
+         */
+        Lampa.Player.listener.follow('start', function () {
+            setTimeout(function () {
+                attachVolumeListener();
+            }, 500);
+        });
+
+
+        /* ===========================================================
+         *  РАЗДЕЛ 4: ОБРАБОТКА СОБЫТИЙ ПЛЕЕРА
+         *
+         *  — Обновление заголовка при старте воспроизведения
+         *  — Отображение названия и серии/эпизода
+         *  — Скрытие дублирующихся элементов
+         * =========================================================== */
+
+        /**
+         * При старте воспроизведения обновляем информацию:
+         * — Основной заголовок (название фильма/сериала)
+         * — Подзаголовок (серия, эпизод, качество)
+         */
         Lampa.Player.listener.follow('start', function (data) {
+            /** Название из данных плеера */
             var name = data.title;
             var head = '';
 
+            /**
+             * Определяем основной заголовок:
+             * 1. Из карточки (data.card) — приоритет
+             * 2. Из активного Activity (текущей страницы)
+             * 3. Фоллбэк на name из данных
+             */
             if (!data.iptv) {
-                if (data.card) head = data.card.title || data.card.name;
-                else if (Lampa.Activity.active().movie) head = Lampa.Activity.active().movie.title || Lampa.Activity.active().movie.name;
+                if (data.card) {
+                    head = data.card.title || data.card.name;
+                } else if (Lampa.Activity.active().movie) {
+                    head = Lampa.Activity.active().movie.title ||
+                           Lampa.Activity.active().movie.name;
+                }
             }
+
             if (!head) head = name;
 
+            /**
+             * Обновляем DOM:
+             * — Заголовок: название фильма/сериала
+             * — Скрываем заголовок для IPTV
+             * — Подзаголовок: имя серии/эпизода (если отличается)
+             */
             title.text(head).toggleClass('hide', Boolean(data.iptv));
-            render.find('.player-info__name').toggleClass('hide', true);
-            value.toggleClass('hide', Boolean(name == head)).find('span').text(name);
+
+            render.find('.player-info__name')
+                .toggleClass('hide', Boolean(name == head))
+                .toggleClass('hide', true);
+
+            value.toggleClass('hide', Boolean(name == head))
+                .find('span').text(name);
         });
 
-        // ============================================================
-        //  6. КАСТОМНЫЙ СЛАЙДЕР ГРОМКОСТИ (YouTube-style)
-        //  Своя реализация, т.к. штатный UI громкости Lampa неудобен
-        //  для мыши/тача и по-разному ведёт себя на разных сборках.
-        // ============================================================
 
-        // SVG-иконки динамика (обычный / приглушённый)
-        var icon_volume_high = '<svg viewBox="0 0 24 24" fill="none"><path d="M3 10v4h4l5 5V5L7 10H3z" fill="#fff"/><path d="M16.5 12a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z" fill="#fff"/><path d="M14 3.2v2.06c3.39 1 5.5 4.16 5.5 6.74s-2.11 5.74-5.5 6.74v2.06c4.5-1.03 7.5-4.9 7.5-8.8s-3-7.77-7.5-8.8z" fill="#fff"/></svg>';
-        var icon_volume_mute = '<svg viewBox="0 0 24 24" fill="none"><path d="M3 10v4h4l5 5V5L7 10H3z" fill="#fff"/><path d="M19 8.5l-1.4-1.4-2.6 2.6-2.6-2.6L11 8.5l2.6 2.6L11 13.7l1.4 1.4 2.6-2.6 2.6 2.6 1.4-1.4-2.6-2.6L19 8.5z" fill="#fff"/></svg>';
+        /* ===========================================================
+         *  РАЗДЕЛ 5: УЛУЧШЕНИЯ ТАКТИЛЬНОГО ВЗАИМОДЕЙСТВИЯ
+         *
+         *  Обработка touch-событий для мобильных устройств.
+         *  Улучшает взаимодействие с прогресс-баром на
+         *  сенсорных экранах (свайп для перемотки).
+         * =========================================================== */
 
-        function getVideoEl() {
-            var v = render.find('video')[0];
-            return v || null;
-        }
-
-        // Получить/установить громкость — пробуем через API Lampa.Player,
-        // если недоступно — работаем напрямую с <video>
-        function getVolume() {
-            try {
-                if (Lampa.Player.volume) return Lampa.Player.volume();
-            } catch (e) {}
-            var v = getVideoEl();
-            return v ? v.volume : 1;
-        }
-
-        function setVolume(val) {
-            val = Math.max(0, Math.min(1, val));
-            try {
-                if (Lampa.Player.volume) {
-                    Lampa.Player.volume(val);
-                    return val;
-                }
-            } catch (e) {}
-            var v = getVideoEl();
-            if (v) v.volume = val;
-            return val;
-        }
-
-        // Собираем разметку слайдера
-        var volume_wrap = $('<div class="yt-volume"></div>');
-        var volume_icon = $('<div class="yt-volume__icon selector"></div>').html(icon_volume_high);
-        var volume_track_wrap = $('<div class="yt-volume__track-wrap"></div>');
-        var volume_track = $('<div class="yt-volume__track selector"></div>');
-        var volume_fill = $('<div class="yt-volume__fill"></div>');
-        var volume_thumb = $('<div class="yt-volume__thumb"></div>');
-        var volume_tooltip = $('<div class="yt-volume__tooltip"></div>');
-
-        volume_track.append(volume_fill).append(volume_thumb).append(volume_tooltip);
-        volume_track_wrap.append(volume_track);
-        volume_wrap.append(volume_icon).append(volume_track_wrap);
-
-        // Ставим слайдер громкости в левый блок кнопок, сразу после play/pause
-        left_box_main.append(volume_wrap);
-
-        var last_volume = 1; // для восстановления после mute
-        var muted = false;
-
-        function renderVolume(val, showTooltip) {
-            var percent = Math.round(val * 100);
-            volume_fill.css('width', percent + '%');
-            volume_thumb.css('left', percent + '%');
-            volume_tooltip.text(percent + '%');
-
-            if (showTooltip) {
-                volume_tooltip.addClass('show');
-                clearTimeout(renderVolume._t);
-                renderVolume._t = setTimeout(function () {
-                    volume_tooltip.removeClass('show');
-                }, 900);
-            }
-
-            muted = val <= 0;
-            volume_icon.html(muted ? icon_volume_mute : icon_volume_high);
-        }
-
-        function applyVolume(val, showTooltip) {
-            val = setVolume(val);
-            if (val > 0) last_volume = val;
-            renderVolume(val, showTooltip);
-        }
-
-        // Инициализация текущим значением громкости
-        applyVolume(getVolume(), false);
-
-        // Клик по иконке — mute/unmute (работает и мышью, и тачем, и OK на пульте)
-        volume_icon.on('click', function () {
-            if (muted) applyVolume(last_volume, true);
-            else applyVolume(0, true);
+        /**
+         * Добавляем визуальную обратную связь при тапе
+         * на кнопки плеера (ripple-эффект для мобилок)
+         */
+        render.on('touchstart', '.player-panel .button', function () {
+            $(this).css('transform', 'scale(0.92)');
         });
 
-        // ---------- Расчёт значения по координате клика/тача ----------
-        function calcValueFromEvent(e, track) {
-            var rect = track.getBoundingClientRect();
-            var clientX = (e.touches && e.touches.length) ? e.touches[0].clientX : e.clientX;
-            var ratio = (clientX - rect.left) / rect.width;
-            return Math.max(0, Math.min(1, ratio));
-        }
-
-        // ---------- Мышь (ПК) ----------
-        var dragging_volume = false;
-
-        volume_track.on('mousedown', function (e) {
-            dragging_volume = true;
-            volume_track.addClass('yt-volume__track--drag');
-            applyVolume(calcValueFromEvent(e, volume_track[0]), true);
-            e.preventDefault();
+        render.on('touchend touchcancel', '.player-panel .button', function () {
+            $(this).css('transform', '');
         });
 
-        $(document).on('mousemove.ytvolume', function (e) {
-            if (!dragging_volume) return;
-            applyVolume(calcValueFromEvent(e, volume_track[0]), true);
+        /**
+         * Улучшаем взаимодействие с прогресс-баром на тач-экранах:
+         * — При касании увеличиваем высоту для удобства
+         * — При отпускании возвращаем обратно
+         */
+        render.on('touchstart', '.player-panel__timeline', function () {
+            $(this).css({
+                'height': '8px',
+                'transition': 'height 0.1s ease'
+            });
         });
 
-        $(document).on('mouseup.ytvolume', function () {
-            if (!dragging_volume) return;
-            dragging_volume = false;
-            volume_track.removeClass('yt-volume__track--drag');
+        render.on('touchend touchcancel', '.player-panel__timeline', function () {
+            $(this).css({
+                'height': '',
+                'transition': ''
+            });
         });
 
-        // ---------- Тач (мобильные) ----------
-        volume_track[0].addEventListener('touchstart', function (e) {
-            dragging_volume = true;
-            volume_track.addClass('yt-volume__track--drag');
-            applyVolume(calcValueFromEvent(e, volume_track[0]), true);
-        }, { passive: true });
+    } /* конец startPlugin() */
 
-        volume_track[0].addEventListener('touchmove', function (e) {
-            if (!dragging_volume) return;
-            applyVolume(calcValueFromEvent(e, volume_track[0]), true);
-        }, { passive: true });
 
-        volume_track[0].addEventListener('touchend', function () {
-            dragging_volume = false;
-            volume_track.removeClass('yt-volume__track--drag');
-        });
-
-        // ---------- Пульт ТВ: стрелки Вверх/Вниз меняют громкость,
-        // когда в фокусе иконка или сам трек громкости ----------
-        var VOLUME_STEP = 0.05;
-
-        $(document).on('keydown.ytvolume', function (e) {
-            var focused_on_volume = volume_icon.hasClass('focus') || volume_track.hasClass('focus') || volume_wrap.hasClass('hover');
-            if (!focused_on_volume) return;
-
-            // 38 = ArrowUp, 40 = ArrowDown
-            if (e.keyCode === 38 || e.keyCode === 40) {
-                var current = getVolume();
-                var next = e.keyCode === 38 ? current + VOLUME_STEP : current - VOLUME_STEP;
-                applyVolume(next, true);
-                e.preventDefault();
-                e.stopPropagation();
-            }
-        });
-
-        // Наведение мышью — раскрываем полосу громкости (десктоп)
-        volume_wrap.on('mouseenter', function () {
-            volume_wrap.addClass('yt-volume--active');
-        }).on('mouseleave', function () {
-            if (!dragging_volume) volume_wrap.removeClass('yt-volume--active');
-        });
-
-        // ------------------------------------------------------
-        //  7. Очистка обработчиков при уничтожении плеера,
-        //  чтобы не плодить дубликаты слушателей document
-        // ------------------------------------------------------
-        Lampa.Player.listener.follow('destroy', function () {
-            $(document).off('mousemove.ytvolume mouseup.ytvolume keydown.ytvolume');
-        });
-    }
+    /* ================================================================
+     *  ИНИЦИАЛИЗАЦИЯ ПЛАГИНА
+     *
+     *  Используем глобальный флаг window.youtube_player_plugin
+     *  для предотвращения повторной инициализации при
+     *  многократной загрузке скрипта.
+     *
+     *  Два сценария запуска:
+     *  1. Приложение уже готово (window.appready = true)
+     *     → запускаем плагин сразу
+     *  2. Приложение ещё загружается
+     *     → ждём события 'ready' от Lampa.Listener
+     * ================================================================ */
 
     if (!window.youtube_player_plugin) {
         window.youtube_player_plugin = true;
 
-        if (window.appready) startPlugin();
-        else {
+        if (window.appready) {
+            startPlugin();
+        } else {
             Lampa.Listener.follow('app', function (e) {
                 if (e.type == 'ready') startPlugin();
             });
