@@ -5,11 +5,10 @@
  * Полная переработка плагина cub.red/plugin/youtube-player.
  *
  * Исправления в v2.1:
- *  • Исправлен баг с пропадающим названием видео (toggleClass).
- *  • Безопасная работа с DOM (без .remove() важных элементов).
- *  • Корректная инициализация (хук на создание плеера, а не только app.ready).
- *  • Устранены утечки памяти (слушатели событий не дублируются).
- *  • Улучшен Flexbox для идеального соответствия дизайну YouTube.
+ *  • Не удаляет нативные кнопки (исправлен баг с поломкой плеера).
+ *  • Устранена утечка памяти (слушатели больше не дублируются).
+ *  • Корректный поиск элементов при каждом новом видео.
+ *  • Безопасные проверки активности (фикс краша на страницах без карточки).
  * ============================================================
  */
 (function () {
@@ -60,8 +59,6 @@
         '}',
         '.yt-style-root .player-video__display{background:#000!important}',
         '.yt-style-root .player-panel,.yt-style-root .player-info{background:var(--yt-bg)!important}',
-        /* Flexbox фикс для центрирования */
-        '.yt-style-root .player-panel__center{display:flex!important;justify-content:space-between!important;align-items:center!important;flex-wrap:wrap!important;}',
         '.yt-style-root .player-panel__line,.yt-style-root .player-panel__center,',
         '.yt-style-root .player-panel__line-one{background:transparent!important;border:none!important}',
         '.yt-style-root .player-panel__line{background:var(--yt-bg-2)!important}',
@@ -180,7 +177,6 @@
         b.classList.add('yt-platform-' + Platform.name());
         updateOrientation();
     }
-
     function updateOrientation() {
         var b = document.body;
         b.classList.toggle('yt-portrait', Platform.isPortrait());
@@ -193,7 +189,8 @@
         try { render = Lampa.Player.render(); } catch (e) { return; }
         
         if (!render || !render.length) return;
-        // Защита от повторного перестроения
+        
+        // Если плеер уже перестроен, не дублируем
         if (render.hasClass('yt-style-root')) return; 
 
         render.addClass('yt-style-root');
@@ -202,7 +199,7 @@
         var value = $('<div class="yt-value hide"><span></span></div>');
 
         render.find('.player-info .player-info__line').before(title);
-        render.find('.player-info').append(value);
+        render.find('.value--size').after(value);
 
         var rightPanel = render.find('.player-panel__right');
         var leftPanel  = render.find('.player-panel__left');
@@ -212,7 +209,7 @@
         var rightBoxAudio   = $('<div class="yt-box yt-box--audio"></div>');
         var leftBoxMain     = $('<div class="yt-box yt-box--main"></div>');
 
-        // Перемещаем существующие элементы в боксы (безопасно)
+        // Перемещаем существующие элементы в боксы (безопасно, без удаления)
         if (rightPanel.length) {
             rightPanel.append(rightBoxAudio, rightBoxQuality, rightBoxMain);
             
@@ -239,7 +236,9 @@
     /* 6. Обработка событий плеера (названия и т.д.) */
     function setupPlayerEvents() {
         try {
+            // Слушатель находится здесь, чтобы не дублироваться при rebuildPlayer
             Lampa.Player.listener.follow('start', function (data) {
+                // Заново запрашиваем render, так как DOM мог измениться
                 var render = Lampa.Player.render();
                 if (!render || !render.length) return;
 
@@ -252,15 +251,18 @@
                 
                 if (!data.iptv) {
                     if (data.card) head = data.card.title || data.card.name || '';
-                    else if (Lampa.Activity.active().movie) {
-                        head = Lampa.Activity.active().movie.title || Lampa.Activity.active().movie.name || '';
+                    else {
+                        // Безопасная проверка активной активности
+                        var active = Lampa.Activity.active();
+                        if (active && active.movie) {
+                            head = active.movie.title || active.movie.name || '';
+                        }
                     }
                 }
                 if (!head) head = name;
 
                 title.text(head).toggleClass('hide', !!data.iptv);
 
-                // Исправлен баг с toggleClass('hide', true)
                 var playerName = render.find('.player-info__name');
                 if (playerName.length) {
                     playerName.toggleClass('hide', name === head || !!data.iptv);
@@ -270,7 +272,7 @@
                      .find('span').text(name);
             });
         } catch (e) {
-            console.error('YT Style Player:', e);
+            console.error('YT Style Player Event Error:', e);
         }
     }
 
@@ -289,18 +291,18 @@
             setTimeout(updateOrientation, 200);
         });
 
-        // Инициализация UI плеера
-        // Хукаемся на создание плеера, чтобы DOM был точно готов
-        Lampa.Player.listener.follow('create', function() {
-            setTimeout(rebuildPlayer, 0); // Небольшая задержка для гарантированной отрисовки DOM
-        });
-        
-        // Также пытаемся перестроить при старте (на случай если create был пропущен)
-        Lampa.Player.listener.follow('start', function() {
-            setTimeout(rebuildPlayer, 0);
-        });
+        // Инициализация структуры UI плеера (создается при открытии плеера)
+        try {
+            Lampa.Player.listener.follow('create', function() {
+                setTimeout(rebuildPlayer, 0); // Выполняем после того, как Lampa отрисует DOM
+            });
+            // На случай если create уже был пропущен
+            Lampa.Player.listener.follow('start', function() {
+                setTimeout(rebuildPlayer, 0);
+            });
+        } catch(e) {}
 
-        // Настраиваем события (только один раз!)
+        // Настраиваем обработку названий
         setupPlayerEvents();
     }
 
