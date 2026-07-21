@@ -198,13 +198,12 @@
         var render;
         try { render = Lampa.Player.render(); } catch (e) { return; }
         if (!render || !render.length) return;
+        if (render.hasClass('yt-style-root')) return; // уже перестроено — не дублируем
 
         render.addClass('yt-style-root');
 
         var title = $('<div class="yt-title hide"></div>');
         var value = $('<div class="yt-value hide"><span></span></div>');
-
-        render.find('.player-video__display').after($('<div class="yt-style-root"></div>'));
 
         render.find('.player-panel__center')
               .find('.button:not(.player-panel__playpause)').remove();
@@ -249,9 +248,7 @@
                 }
                 if (!head) head = name;
                 title.text(head).toggleClass('hide', !!data.iptv);
-                render.find('.player-info__name')
-                      .toggleClass('hide', name === head)
-                      .toggleClass('hide', true);
+                render.find('.player-info__name').addClass('hide');
                 value.toggleClass('hide', name === head)
                      .find('span').text(name);
             });
@@ -262,7 +259,24 @@
     function startPlugin() {
         injectCSS();
         applyPlatformClass();
+
+        // На момент старта приложения DOM плеера ещё не создан,
+        // поэтому пробуем перестроить сразу (вдруг уже открыт),
+        // и обязательно переподписываемся на события плеера —
+        // именно они гарантируют перестройку при каждом открытии видео.
         rebuildPlayer();
+
+        try {
+            Lampa.Player.listener.follow('start', function () {
+                rebuildPlayer();
+            });
+            Lampa.Player.listener.follow('ready', function () {
+                rebuildPlayer();
+            });
+            Lampa.Player.listener.follow('open', function () {
+                rebuildPlayer();
+            });
+        } catch (e) {}
 
         var rt;
         window.addEventListener('resize', function () {
