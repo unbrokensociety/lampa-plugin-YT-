@@ -1,313 +1,242 @@
-/*
- * ============================================================
- * YouTube Style Player UI — Lampa Plugin (v5.0 Ultimate Fix)
- * ------------------------------------------------------------
- *  • 100% защита от дублирования (троения) элементов.
- *  • Нулевое вмешательство в родную структуру Lampa.
- *  • Чистый CSS для визуала (плашки, красный прогресс-бар).
- * ============================================================
- */
 (function () {
     'use strict';
 
-    if (window.__youtube_style_player_v5) return;
-    window.__youtube_style_player_v5 = true;
+    // Плагин работает НАД штатной системой профилей Lampa (Lampa.Account.Profile),
+    // той самой, что открывается по иконке профиля в шапке при включённом аккаунте (CUB).
+    // Он не создаёт свои профили, а лишь:
+    //   1) заставляет выбрать один из уже существующих профилей при каждом запуске;
+    //   2) добавляет опциональный PIN на вход в конкретный профиль.
 
-    /* 1. Утилиты определения платформы */
-    var Platform = {
-        isTV: function () {
-            try {
-                if (typeof Lampa.Platform.tv === 'function') return Lampa.Platform.tv();
-                if (typeof Lampa.Platform.screen === 'function') return Lampa.Platform.screen('tv');
-            } catch (e) {}
-            return false;
-        },
-        isMobile: function () {
-            try {
-                if (typeof Lampa.Platform.mobile === 'function') return Lampa.Platform.mobile();
-                if (typeof Lampa.Platform.screen === 'function') return Lampa.Platform.screen('mobile');
-            } catch (e) {}
-            return /Mobi|Android|iPhone|iPod/i.test(navigator.userAgent || '');
-        },
-        isTablet: function () {
-            try {
-                if (typeof Lampa.Platform.tablet === 'function') return Lampa.Platform.tablet();
-                if (typeof Lampa.Platform.screen === 'function') return Lampa.Platform.screen('tablet');
-            } catch (e) {}
-            return /iPad|Tablet/i.test(navigator.userAgent || '');
-        },
-        isDesktop: function () {
-            return !this.isTV() && !this.isMobile() && !this.isTablet();
-        },
-        isPortrait: function () {
-            return window.innerHeight > window.innerWidth;
-        },
-        name: function () {
-            if (this.isTV()) return 'tv';
-            if (this.isTablet()) return 'tablet';
-            if (this.isMobile()) return 'mobile';
-            return 'desktop';
-        }
-    };
+    if (window.plugin_profile_lock_ready) return;
+    window.plugin_profile_lock_ready = true;
 
-    /* 2. CSS Стили */
-    var CSS = `
-        body.yt-player-active {
-            --yt-bg: #0f0f0f;
-            --yt-bg-2: rgba(255,255,255,.1);
-            --yt-bg-3: rgba(255,255,255,.2);
-            --yt-text: #fff;
-            --yt-text-2: #aaa;
-            --yt-accent: #ff0000;
-            --yt-radius: 12px;
-        }
-        
-        /* Базовая раскладка */
-        body.yt-player-active .player-video__display { background: #000 !important; }
-        body.yt-player-active .player-panel,
-        body.yt-player-active .player-info { background: var(--yt-bg) !important; }
-        
-        body.yt-player-active .player-panel__center {
-            display: flex !important;
-            justify-content: space-between !important;
-            align-items: center !important;
-            flex-wrap: wrap !important;
-            gap: 10px;
-            padding: 10px 24px 16px !important;
-        }
-        body.yt-player-active .player-panel__line-one {
-            width: 100% !important;
-            margin-bottom: 8px !important;
-            order: -1 !important;
-        }
-        body.yt-player-active .player-panel__left {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            flex: 1;
-            min-width: 0;
-            padding-right: 15px;
-        }
-        body.yt-player-active .player-panel__right {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-        }
-        
-        /* Таймлайн (красный) */
-        body.yt-player-active .player-panel__line {
-            background: var(--yt-bg-2) !important;
-            height: 4px !important;
-            border-radius: 2px !important;
-            cursor: pointer;
-        }
-        body.yt-player-active .player-panel__line .time-line__load { background: var(--yt-bg-3) !important; }
-        body.yt-player-active .player-panel__line .time-line__line { background: var(--yt-accent) !important; }
-        body.yt-player-active .player-panel__line .time-line__body {
-            background: var(--yt-accent) !important;
-            box-shadow: 0 0 0 4px rgba(255,0,0,.25) !important;
-        }
-        
-        /* Кнопки (круглые) */
-        body.yt-player-active .player-panel .button {
-            background: transparent !important;
-            color: var(--yt-text) !important;
-            border-radius: 50% !important;
-            transition: background .15s, color .15s, transform .1s !important;
-        }
-        body.yt-player-active .player-panel .button:hover { background: var(--yt-bg-2) !important; }
-        body.yt-player-active .player-panel .button:active { transform: scale(.94); }
-        body.yt-player-active .player-panel .player-panel__playpause {
-            background: var(--yt-text) !important;
-            color: #000 !important;
-        }
-        body.yt-player-active .player-panel .player-panel__playpause:hover { background: #fff !important; }
-        
-        /* Эффект плашек для настроек */
-        body.yt-player-active .player-panel__quality,
-        body.yt-player-active .player-panel__flow,
-        body.yt-player-active .player-panel__tracks,
-        body.yt-player-active .player-panel__subs {
-            background: var(--yt-bg-2);
-            border-radius: var(--yt-radius) !important;
-            padding: 0 8px;
-            margin: 0 2px;
-        }
-        body.yt-player-active .player-panel__quality .selectbox__value,
-        body.yt-player-active .player-panel__flow .selectbox__value,
-        body.yt-player-active .player-panel__tracks .selectbox__value,
-        body.yt-player-active .player-panel__subs .selectbox__value {
-            color: var(--yt-text) !important;
-            background: transparent !important;
-            height: 40px;
-            display: flex;
-            align-items: center;
-        }
-        
-        /* Наши текстовые элементы */
-        body.yt-player-active .yt-title {
-            font-size: 1.15em;
-            font-weight: 600;
-            color: var(--yt-text);
-            line-height: 1.3;
-            margin: 0 0 4px;
-            max-width: 100%;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        body.yt-player-active .yt-value {
-            font-size: .85em;
-            color: var(--yt-text-2);
-            max-width: 100%;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        body.yt-player-active .yt-title.hide,
-        body.yt-player-active .yt-value.hide { display: none !important; }
+    var PIN_KEY = 'pl_pins';           // { [profileId]: '1234' }
+    var ASK_KEY = 'pl_ask_on_start';   // bool
 
-        /* TV Стили */
-        body.yt-platform-tv .yt-player-active .player-panel__center { padding: 18px 48px 28px !important; gap: 12px; }
-        body.yt-platform-tv .yt-player-active .player-panel__line { height: 6px !important; }
-        body.yt-platform-tv .yt-player-active .player-panel .button { width: 64px !important; height: 64px !important; font-size: 1.4em !important; }
-        body.yt-platform-tv .yt-player-active .player-panel__playpause { width: 72px !important; height: 72px !important; }
-        body.yt-platform-tv .yt-player-active .player-panel__quality .selectbox__value,
-        body.yt-platform-tv .yt-player-active .player-panel__flow .selectbox__value { height: 64px; }
-        body.yt-platform-tv .yt-player-active .yt-title { font-size: 1.6em; }
-        body.yt-platform-tv .yt-player-active .yt-value { font-size: 1.05em; }
-        body.yt-platform-tv .yt-player-active .player-panel .button.focus,
-        body.yt-platform-tv .yt-player-active .player-panel .button.focused {
-            background: var(--yt-bg-3) !important;
-            outline: 2px solid var(--yt-accent) !important;
-            outline-offset: 2px;
-        }
+    // ===================== ХРАНЕНИЕ PIN =====================
 
-        /* Mobile Portrait */
-        body.yt-platform-mobile.yt-portrait .yt-player-active .player-panel__center,
-        body.yt-platform-tablet.yt-portrait .yt-player-active .player-panel__center {
-            flex-direction: column;
-            align-items: stretch;
-        }
-        body.yt-platform-mobile.yt-portrait .yt-player-active .player-panel__left,
-        body.yt-platform-mobile.yt-portrait .yt-player-active .player-panel__right {
-            width: 100%;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-        }
-    `;
-
-    /* 3. Внедрение CSS */
-    function injectCSS() {
-        if (document.getElementById('yt-style-player-css-v5')) return;
-        var s = document.createElement('style');
-        s.id = 'yt-style-player-css-v5';
-        s.textContent = CSS;
-        document.head.appendChild(s);
+    function getPins() {
+        return Lampa.Storage.get(PIN_KEY, {});
     }
 
-    /* 4. Определение платформы */
-    function applyPlatformClass() {
-        var b = document.body;
-        ['yt-platform-tv', 'yt-platform-desktop', 'yt-platform-mobile', 'yt-platform-tablet'].forEach(function (c) {
-            b.classList.remove(c);
+    function savePins(p) {
+        Lampa.Storage.set(PIN_KEY, p);
+    }
+
+    // ===================== ПРОВЕРКА PIN =====================
+
+    function askPin(profile, onOk, onFail) {
+        Lampa.Input.edit({
+            title: 'PIN для профиля «' + profile.name + '»',
+            value: '',
+            free: true,
+            nosave: true,
+            nomic: true,
+            password: true
+        }, function (value) {
+            var digits = String(value || '').replace(/\D/g, '');
+            var pins = getPins();
+
+            if (digits && digits === String(pins[profile.id])) {
+                onOk();
+            } else {
+                Lampa.Noty.show('Неверный PIN');
+                onFail();
+            }
         });
-        b.classList.add('yt-platform-' + Platform.name());
-        b.classList.toggle('yt-portrait', Platform.isPortrait());
-        b.classList.toggle('yt-landscape', !Platform.isPortrait());
     }
 
-    /* 5. Обработка событий плеера */
-    function setupPlayerEvents() {
-        try {
-            Lampa.Player.listener.follow('start', function (data) {
-                var render = Lampa.Player.render();
-                if (!render || !render.length) return;
+    // ===================== ЭКРАН БЛОКИРОВКИ (при старте) =====================
 
-                // Добавляем классы на корень плеера и body
-                render.addClass('yt-style-active');
-                document.body.classList.add('yt-player-active');
+    function buildOverlay() {
+        var $overlay = $('<div class="pl-overlay"></div>');
+        $overlay.css({
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: '#0b0b0f',
+            zIndex: 99999
+        });
+        $('body').append($overlay);
+        return $overlay;
+    }
 
-                var leftPanel = render.find('.player-panel__left');
-                if (!leftPanel.length) return;
+    /**
+     * Открывает штатный выбор профиля Lampa.
+     * blocking = true  -> нельзя закрыть без выбора (используется на старте приложения)
+     * blocking = false -> обычное поведение (используется из настроек)
+     */
+    function runProfileFlow(blocking, onDone) {
+        if (!Lampa.Account || !Lampa.Account.Permit || !Lampa.Account.Permit.access) {
+            // нет аккаунта / профилей нет вообще — блокировать нечего
+            if (onDone) onDone();
+            return;
+        }
 
-                // ЗАЩИТА ОТ ДУБЛИРОВАНИЯ: Ищем существующие элементы, если их нет - создаем
-                var titleEl = leftPanel.find('.yt-title');
-                var valueEl = leftPanel.find('.yt-value');
+        var $overlay = blocking ? buildOverlay() : null;
 
-                if (!titleEl.length) {
-                    titleEl = $('<div class="yt-title hide"></div>');
-                    valueEl = $('<div class="yt-value hide"></div>');
-                    leftPanel.prepend(valueEl);
-                    leftPanel.prepend(titleEl);
-                }
+        var picked = null;
+        function onProfileSelect(e) { picked = e.profile; }
+        Lampa.Listener.follow('profile_select', onProfileSelect);
 
-                // Формируем тексты
-                var name = data.title || '';
-                var head = '';
-                
-                if (!data.iptv) {
-                    if (data.card) head = data.card.title || data.card.name || '';
-                    else {
-                        var active = Lampa.Activity.active();
-                        if (active && active.movie) {
-                            head = active.movie.title || active.movie.name || '';
-                        }
+        function finish() {
+            Lampa.Listener.remove('profile_select', onProfileSelect);
+            if ($overlay) $overlay.remove();
+            if (onDone) onDone();
+        }
+
+        function open() {
+            Lampa.Account.Profile.select(function () {
+                if (picked) {
+                    var profile = picked;
+                    picked = null;
+
+                    var pins = getPins();
+                    if (pins[profile.id]) {
+                        askPin(profile, finish, function () {
+                            open(); // неверный PIN — выбор заново
+                        });
+                    } else {
+                        finish();
                     }
-                }
-                if (!head) head = name;
-
-                // Обновляем текст (без дублирования)
-                titleEl.text(head).toggleClass('hide', !!data.iptv);
-                valueEl.text(name).toggleClass('hide', name === head || !name);
-
-                // Скрываем родное название Lampa, чтобы не было двойного текста
-                var playerName = render.find('.player-info__name');
-                if (playerName.length) {
-                    playerName.addClass('hide');
+                } else if (blocking) {
+                    // нажали "назад" / открыли "добавить профиль" без выбора —
+                    // на стартовом обязательном экране не выпускаем без выбора
+                    setTimeout(open, 50);
+                } else {
+                    finish();
                 }
             });
+        }
 
-            // Снимаем классы при закрытии плеера
-            Lampa.Player.listener.follow('destroy', function () {
-                document.body.classList.remove('yt-player-active');
+        open();
+    }
+
+    // ===================== НАСТРОЙКА PIN ДЛЯ ПРОФИЛЯ =====================
+
+    function pickProfileForPin() {
+        Lampa.Account.Api.load('profiles/all').then(function (result) {
+            if (!result || !result.profiles || !result.profiles.length) {
+                Lampa.Noty.show('Профили не найдены');
+                return;
+            }
+
+            var pins = getPins();
+            var items = result.profiles.map(function (p) {
+                return { title: p.name + (pins[p.id] ? ' 🔒' : ''), id: p.id, profile: p };
             });
-        } catch (e) {
-            console.error('YT Style Player Error:', e);
+
+            Lampa.Select.show({
+                title: 'Выберите профиль',
+                items: items,
+                onSelect: function (item) {
+                    profilePinMenu(item.profile);
+                },
+                onBack: function () {
+                    if (Lampa.Controller.toggle) Lampa.Controller.toggle('settings');
+                }
+            });
+        }).catch(function () {
+            Lampa.Noty.show('Не удалось получить список профилей');
+        });
+    }
+
+    function profilePinMenu(profile) {
+        var pins = getPins();
+        var has = Boolean(pins[profile.id]);
+
+        var actions = [
+            { title: has ? 'Изменить PIN' : 'Задать PIN', id: 'set' }
+        ];
+        if (has) actions.push({ title: 'Убрать PIN', id: 'unset' });
+        actions.push({ title: 'Назад', id: 'back' });
+
+        Lampa.Select.show({
+            title: profile.name,
+            items: actions,
+            onSelect: function (action) {
+                if (action.id === 'set') {
+                    Lampa.Input.edit({
+                        title: 'Новый PIN (только цифры)',
+                        value: '',
+                        free: true,
+                        nosave: true,
+                        nomic: true,
+                        password: true
+                    }, function (value) {
+                        var digits = String(value || '').replace(/\D/g, '');
+                        if (digits) {
+                            var p = getPins();
+                            p[profile.id] = digits;
+                            savePins(p);
+                            Lampa.Noty.show('PIN сохранён');
+                        }
+                        pickProfileForPin();
+                    });
+                } else if (action.id === 'unset') {
+                    var p = getPins();
+                    delete p[profile.id];
+                    savePins(p);
+                    Lampa.Noty.show('PIN удалён');
+                    pickProfileForPin();
+                } else {
+                    pickProfileForPin();
+                }
+            },
+            onBack: function () { pickProfileForPin(); }
+        });
+    }
+
+    // ===================== ВКЛАДКА В НАСТРОЙКАХ =====================
+
+    function initSettings() {
+        Lampa.SettingsApi.addComponent({
+            component: 'profile_lock',
+            name: 'Профили',
+            icon: '<svg height="20" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg"><path d="M12 12c2.7 0 5-2.3 5-5s-2.3-5-5-5-5 2.3-5 5 2.3 5 5 5zm0 2c-3.3 0-10 1.7-10 5v3h20v-3c0-3.3-6.7-5-10-5z" fill="#fff"/></svg>'
+        });
+
+        Lampa.SettingsApi.addParam({
+            component: 'profile_lock',
+            param: { name: 'pl_set_pin', type: 'button', default: '' },
+            field: { name: 'PIN-код для профиля', description: 'Задать, изменить или убрать PIN для конкретного профиля' },
+            onRender: function (item) {
+                item.on('hover:enter', pickProfileForPin);
+            }
+        });
+
+        Lampa.SettingsApi.addParam({
+            component: 'profile_lock',
+            param: { name: 'pl_switch_now', type: 'button', default: '' },
+            field: { name: 'Сменить профиль сейчас', description: 'Открыть штатный выбор профиля' },
+            onRender: function (item) {
+                item.on('hover:enter', function () { runProfileFlow(false); });
+            }
+        });
+
+        Lampa.SettingsApi.addParam({
+            component: 'profile_lock',
+            param: { name: ASK_KEY, type: 'trigger', default: true },
+            field: { name: 'Спрашивать профиль при запуске', description: 'Показывать обязательный выбор профиля при каждом открытии Lampa' }
+        });
+    }
+
+    // ===================== СТАРТ =====================
+
+    function startPlugin() {
+        initSettings();
+
+        var askOnStart = Lampa.Storage.get(ASK_KEY, true);
+        if (askOnStart) {
+            setTimeout(function () { runProfileFlow(true); }, 300);
         }
     }
 
-    /* 6. Запуск */
-    function startPlugin() {
-        injectCSS();
-        applyPlatformClass();
-
-        var rt;
-        window.addEventListener('resize', function () {
-            clearTimeout(rt);
-            rt = setTimeout(applyPlatformClass, 150);
-        });
-        window.addEventListener('orientationchange', function () {
-            setTimeout(applyPlatformClass, 200);
-        });
-
-        setupPlayerEvents();
-    }
-
-    /* 7. Точка входа */
     if (window.appready) {
         startPlugin();
     } else {
-        try {
-            Lampa.Listener.follow('app', function (e) {
-                if (e.type === 'ready') startPlugin();
-            });
-        } catch (e) {
-            if (document.readyState === 'complete') startPlugin();
-            else window.addEventListener('load', startPlugin);
-        }
+        Lampa.Listener.follow('app', function (e) {
+            if (e.type === 'ready') startPlugin();
+        });
     }
+
 })();
