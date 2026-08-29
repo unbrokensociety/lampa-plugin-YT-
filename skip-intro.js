@@ -1,20 +1,24 @@
 /*!
- * Skip Intro/Outro для Lampa — v2.0
- * Пропуск заставок, рекапов, превью и титров.
- * Новое: поддержка фильмов, комбинированная детекция (субтитры + звук),
- * анализ ключевых слов в субтитрах, кнопка в стиле Netflix,
- * таймаут 10с, повторные попытки, кэш для фильмов и сериалов.
+ * Skip Intro/Outro для Lampa — v2.1
+ * Пропуск заставок, рекапов, превью и титров (сериалы + фильмы).
+ *
+ * Исправления v2.1 (в v2.0 кнопка могла не появляться):
+ *  - отказоустойчивая обработка событий плеера (пустой дубль события больше не блокирует запуск);
+ *  - метаданные (tmdb/imdb, сезон, эпизод) ищутся глубоким сканом: объект события,
+ *    текущий элемент плейлиста, активность Lampa;
+ *  - «сторож» (watchdog): если событие start не пришло — плагин сам заметит
+ *    начавшееся воспроизведение и включится;
+ *  - субтитры для детекции берутся в том числе из объекта видео (subtitle/subtitles);
+ *  - детекция работает даже без ID — кнопка может появиться и без баз данных.
  */
 (function() {
   'use strict';
 
   if (window.__skipIntroLoaded) return;
   window.__skipIntroLoaded = true;
-  window.__skipIntroVersion = '2.0';
+  window.__skipIntroVersion = '2.1';
 
-  /* ================================================================== */
-  /*  Метаданные установленного плагина (как в оригинале)                */
-  /* ================================================================== */
+  /* ---------- метаданные плагина (как в оригинале) ---------- */
   try {
     var plugins = Lampa.Storage.get('plugins', '[]');
     if (typeof plugins === 'string') plugins = JSON.parse(plugins);
@@ -30,16 +34,13 @@
     }
   } catch (e) {}
 
-  /* ================================================================== */
-  /*  Константы                                                          */
-  /* ================================================================== */
-  var API_INTRODB_BASE  = 'https://api.introdb.app';
-  var API_TIMEOUT       = 10000;                     // было 5000 — увеличено
-  var API_RETRIES       = 2;                         // повторные попытки при ошибках сети
-  var RETRY_DELAY       = 800;                       // базовая задержка повтора (мс)
-  var MAX_INTRO_END     = 360;                       // заставка не длиннее 6 минут
-  var COUNTDOWN_MS      = 4000;                      // окно автопропуска
-  var CACHE_TTL_API     = 7  * 24 * 60 * 60 * 1000;  // кэш ответов API — 7 дней
+  /* ---------- константы ---------- */
+  var API_TIMEOUT = 10000;                       // таймаут запросов, мс
+  var API_RETRIES = 2;                           // повторные попытки при ошибках сети
+  var RETRY_DELAY = 800;
+  var MAX_INTRO_END = 360;                       // заставка не длиннее 6 минут
+  var COUNTDOWN_MS = 4000;                       // окно автопропуска
+  var CACHE_TTL_API = 7 * 24 * 60 * 60 * 1000;   // кэш ответов API — 7 дней
   var CACHE_TTL_DETECTED = 30 * 24 * 60 * 60 * 1000; // кэш детекции — 30 дней
 
   var SEGMENT_LABELS = {
@@ -50,7 +51,6 @@
   };
   var SEGMENT_TYPES = ['intro', 'recap', 'credits', 'preview'];
 
-  /* Ключевые слова в субтитрах для умной детекции */
   var KEYWORDS = {
     recap: ['previously on', 'previously in', 'last time on', 'last episode', 'recap',
             'ранее в сериале', 'ранее в', 'в прошлой серии', 'в предыдущей серии', 'в прошлых сериях'],
@@ -63,7 +63,7 @@
   function log() {
     var args = Array.prototype.slice.call(arguments);
     args.unshift('[SkipIntro]');
-    console.log.apply(console, args);
+    try { console.log.apply(console, args); } catch (e) {}
   }
 
   function inArray(arr, v) {
@@ -71,7 +71,6 @@
     return false;
   }
 
-  /* Единый ключ кэша: работает и для серий, и для фильмов */
   function metaCacheKey(meta) {
     var id = meta.tmdbId ? 'tmdb' + meta.tmdbId : (meta.imdbId ? 'imdb' + meta.imdbId : null);
     if (!id) return null;
@@ -83,85 +82,76 @@
   /* ================================================================== */
   var Settings = {
     _keyMap: {
-      enter: [13],
-      space: [32],
-      back: [8, 27, 10009, 461, 4],
-      red: [403],
-      green: [404],
-      yellow: [405],
-      blue: [406]
+      enter: [13], space: [32], back: [8, 27, 10009, 461, 4],
+      red: [403], green: [404], yellow: [405], blue: [406]
     },
 
     init: function() {
-      Lampa.SettingsApi.addComponent({
-        component: 'skip_intro',
-        name: 'Пропуск заставок',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>'
-      });
+      try {
+        Lampa.SettingsApi.addComponent({
+          component: 'skip_intro',
+          name: 'Пропуск заставок',
+          icon: '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>'
+        });
+      } catch (e) { log('addComponent error:', e); }
 
-      Lampa.SettingsApi.addParam({
-        component: 'skip_intro',
+      function param(p) {
+        try { Lampa.SettingsApi.addParam(p); }
+        catch (e) { log('addParam error:', p.param && p.param.name, e); }
+      }
+
+      param({ component: 'skip_intro',
         param: { name: 'skip_intro_enabled', type: 'trigger', default: true },
-        field: { name: 'Включить плагин', description: 'Показывать кнопку пропуска заставок и титров' }
-      });
-      Lampa.SettingsApi.addParam({
-        component: 'skip_intro',
+        field: { name: 'Включить плагин', description: 'Показывать кнопку пропуска заставок и титров' } });
+
+      param({ component: 'skip_intro',
         param: { name: 'skip_intro_auto', type: 'trigger', default: false },
-        field: { name: 'Всегда автопропуск', description: 'Всегда перематывать без кнопки (для всего контента)' }
-      });
-      Lampa.SettingsApi.addParam({
-        component: 'skip_intro',
+        field: { name: 'Всегда автопропуск', description: 'Всегда перематывать без кнопки (для всего контента)' } });
+
+      param({ component: 'skip_intro',
         param: { name: 'skip_intro_detect', type: 'trigger', default: true },
-        field: { name: 'Умное обнаружение', description: 'Определять заставку по субтитрам и звуку, если нет данных в базе' }
-      });
-      Lampa.SettingsApi.addParam({
-        component: 'skip_intro',
+        field: { name: 'Умное обнаружение', description: 'Определять заставку по субтитрам и звуку, если нет данных в базе' } });
+
+      param({ component: 'skip_intro',
         param: { name: 'skip_intro_movies', type: 'trigger', default: true },
-        field: { name: 'Работать с фильмами', description: 'Искать заставку в начале и титры в конце фильмов' }
-      });
-      Lampa.SettingsApi.addParam({
-        component: 'skip_intro',
+        field: { name: 'Работать с фильмами', description: 'Искать заставку в начале и титры в конце фильмов' } });
+
+      param({ component: 'skip_intro',
         param: { name: 'skip_intro_type_intro', type: 'trigger', default: true },
-        field: { name: 'Пропускать заставку (intro)' }
-      });
-      Lampa.SettingsApi.addParam({
-        component: 'skip_intro',
+        field: { name: 'Пропускать заставку (intro)' } });
+
+      param({ component: 'skip_intro',
         param: { name: 'skip_intro_type_recap', type: 'trigger', default: true },
-        field: { name: 'Пропускать рекап (recap)' }
-      });
-      Lampa.SettingsApi.addParam({
-        component: 'skip_intro',
+        field: { name: 'Пропускать рекап (recap)' } });
+
+      param({ component: 'skip_intro',
         param: { name: 'skip_intro_type_credits', type: 'trigger', default: true },
-        field: { name: 'Пропускать титры (credits)' }
-      });
-      Lampa.SettingsApi.addParam({
-        component: 'skip_intro',
+        field: { name: 'Пропускать титры (credits)' } });
+
+      param({ component: 'skip_intro',
         param: { name: 'skip_intro_type_preview', type: 'trigger', default: false },
-        field: { name: 'Пропускать превью (preview)' }
-      });
-      Lampa.SettingsApi.addParam({
-        component: 'skip_intro',
+        field: { name: 'Пропускать превью (preview)' } });
+
+      param({ component: 'skip_intro',
         param: {
           name: 'skip_intro_key_skip', type: 'select', default: 'enter',
           values: { enter: 'Enter / OK', space: 'Пробел', red: 'Красная кнопка (403)', green: 'Зелёная кнопка (404)', yellow: 'Жёлтая кнопка (405)', blue: 'Синяя кнопка (406)' }
         },
-        field: { name: 'Кнопка «Пропустить»', description: 'Какая кнопка на пульте пропускает сегмент' }
-      });
-      Lampa.SettingsApi.addParam({
-        component: 'skip_intro',
+        field: { name: 'Кнопка «Пропустить»', description: 'Какая кнопка на пульте пропускает сегмент' } });
+
+      param({ component: 'skip_intro',
         param: {
           name: 'skip_intro_key_cancel', type: 'select', default: 'back',
           values: { back: 'Назад (Back)', red: 'Красная кнопка (403)', green: 'Зелёная кнопка (404)', yellow: 'Жёлтая кнопка (405)', blue: 'Синяя кнопка (406)' }
         },
-        field: { name: 'Кнопка «Отменить»', description: 'Какая кнопка на пульте отменяет автопропуск' }
-      });
+        field: { name: 'Кнопка «Отменить»', description: 'Какая кнопка на пульте отменяет автопропуск' } });
     },
 
-    isEnabled: function() { return Lampa.Storage.field('skip_intro_enabled') !== false; },
-    isAutoSkip: function() { return Lampa.Storage.field('skip_intro_auto') === true; },
-    isDetectEnabled: function() { return Lampa.Storage.field('skip_intro_detect') !== false; },
-    isMoviesEnabled: function() { return Lampa.Storage.field('skip_intro_movies') !== false; },
-    isTypeEnabled: function(type) { return Lampa.Storage.field('skip_intro_type_' + type) !== false; },
+    isEnabled: function() { try { return Lampa.Storage.field('skip_intro_enabled') !== false; } catch (e) { return true; } },
+    isAutoSkip: function() { try { return Lampa.Storage.field('skip_intro_auto') === true; } catch (e) { return false; } },
+    isDetectEnabled: function() { try { return Lampa.Storage.field('skip_intro_detect') !== false; } catch (e) { return true; } },
+    isMoviesEnabled: function() { try { return Lampa.Storage.field('skip_intro_movies') !== false; } catch (e) { return true; } },
+    isTypeEnabled: function(type) { try { return Lampa.Storage.field('skip_intro_type_' + type) !== false; } catch (e) { return true; } },
     getSkipKeys: function() {
       var k = Lampa.Storage.field('skip_intro_key_skip') || 'enter';
       return this._keyMap[k] || this._keyMap.enter;
@@ -173,7 +163,7 @@
   };
 
   /* ================================================================== */
-  /*  Smart Skip — «пользователь уже пропускал это» (на уровне тайтла)   */
+  /*  Smart Skip — «пользователь уже пропускал это»                      */
   /* ================================================================== */
   var SmartSkip = {
     _storageKey: 'skip_intro_smart',
@@ -188,36 +178,33 @@
     _saveAll: function(all) {
       try { Lampa.Storage.set(this._storageKey, JSON.stringify(all)); } catch (e) {}
     },
-    hasSkipped: function(contentKey, type) {
-      if (!contentKey) return false;
-      return this._getAll()[contentKey + '_' + type] === true;
+    hasSkipped: function(key, type) {
+      if (!key) return false;
+      return this._getAll()[key + '_' + type] === true;
     },
-    rememberSkip: function(contentKey, type) {
-      if (!contentKey) return;
+    rememberSkip: function(key, type) {
+      if (!key) return;
       var all = this._getAll();
-      all[contentKey + '_' + type] = true;
+      all[key + '_' + type] = true;
       this._saveAll(all);
-      log('Smart skip запомнен:', contentKey, type);
     },
-    forgetSkip: function(contentKey, type) {
-      if (!contentKey) return;
+    forgetSkip: function(key, type) {
+      if (!key) return;
       var all = this._getAll();
-      if (all[contentKey + '_' + type] !== undefined) {
-        delete all[contentKey + '_' + type];
+      if (all[key + '_' + type] !== undefined) {
+        delete all[key + '_' + type];
         this._saveAll(all);
-        log('Smart skip отменён:', contentKey, type);
       }
     }
   };
 
   /* ================================================================== */
-  /*  Кэш сегментов из API (localStorage, 7 дней, сериалы + фильмы)      */
+  /*  Кэш сегментов из API (localStorage, сериалы + фильмы)              */
   /* ================================================================== */
   var SegmentCache = {
     _prefix: 'skip_intro_seg_',
 
     _legacyKey: function(meta) {
-      // ключи старой версии плагина — читаем для совместимости
       if (!meta.tmdbId || meta.isMovie) return null;
       return 'skip_' + meta.tmdbId + '_s' + meta.season + '_e' + meta.episode;
     },
@@ -252,7 +239,7 @@
   };
 
   /* ================================================================== */
-  /*  Кэш детектированных сегментов (Lampa.Storage, 30 дней)             */
+  /*  Кэш детектированных сегментов (Lampa.Storage)                      */
   /* ================================================================== */
   var DetectedCache = {
     _storageKey: 'skip_intro_detected',
@@ -272,16 +259,12 @@
       if (!meta.tmdbId) return null;
       return meta.isMovie ? meta.tmdbId + '_movie' : meta.tmdbId + '_s' + meta.season + '_e' + meta.episode;
     },
-    _legacyKey: function(meta) {
-      if (!meta.tmdbId || meta.isMovie) return null;
-      return meta.tmdbId + '_s' + meta.season + '_e' + meta.episode;
-    },
 
     get: function(meta) {
       var key = this._key(meta);
       if (!key) return null;
       var all = this._getAll();
-      var legacy = this._legacyKey(meta);
+      var legacy = meta.tmdbId && !meta.isMovie ? meta.tmdbId + '_s' + meta.season + '_e' + meta.episode : null;
       var rec = all[key] || (legacy ? all[legacy] : null);
       if (!rec) return null;
       if (!rec._ts || Date.now() - rec._ts > this._ttl) {
@@ -299,44 +282,44 @@
       var all = this._getAll();
       all[key] = { segments: segments, _ts: Date.now() };
       this._saveAll(all);
-      log('Детекция закэширована:', key, '—', segments.length, 'сегм.');
+      log('детекция закэширована:', key);
     }
   };
 
   /* ================================================================== */
-  /*  Детектор по субтитрам: паузы + ключевые слова + музыкальные реплики */
+  /*  Детектор по субтитрам                                              */
   /* ================================================================== */
   var SubtitleDetector = {
-    detect: function(video, isMovie) {
+    /* subsList — список дорожек субтитров, собранный из события плеера */
+    detect: function(videoEl, isMovie, subsList) {
       var self = this;
       return new Promise(function(resolve) {
         try {
-          /* 1) внешние субтитры (customSubs от Lampa) */
-          var trackUrl = null;
-          var lists = [video.customSubs, video.subtitles];
-          for (var i = 0; i < lists.length && !trackUrl; i++) {
-            var list = lists[i];
-            if (list && list.length) {
-              for (var j = 0; j < list.length; j++) {
-                if (list[j] && list[j].url) { trackUrl = list[j].url; break; }
+          var url = null;
+          var candidates = [subsList, videoEl ? videoEl.customSubs : null, videoEl ? videoEl.subtitles : null];
+          for (var i = 0; i < candidates.length && !url; i++) {
+            var arr = candidates[i];
+            if (arr && arr.length) {
+              for (var j = 0; j < arr.length; j++) {
+                if (arr[j] && arr[j].url) { url = arr[j].url; break; }
               }
             }
           }
 
-          if (trackUrl) {
-            self._loadSubsFile(trackUrl, function(text) {
-              resolve(text ? self._analyzeSubsText(text, video.duration || 0, isMovie) : []);
+          if (url) {
+            self._loadSubsFile(url, function(text) {
+              if (text) resolve(self._analyzeSubsText(text, (videoEl && videoEl.duration) || 0, isMovie));
+              else resolve([]);
             });
             return;
           }
 
-          /* 2) встроенные дорожки субтитров */
-          var tracks = video.textTracks;
+          var tracks = videoEl ? videoEl.textTracks : null;
           if (tracks && tracks.length) {
             for (var t = 0; t < tracks.length; t++) {
               var cues = tracks[t] && tracks[t].cues;
               if (cues && cues.length > 5) {
-                resolve(self._analyzeCues(cues, video.duration || 0, isMovie));
+                resolve(self._analyzeCues(cues, (videoEl && videoEl.duration) || 0, isMovie));
                 return;
               }
             }
@@ -384,7 +367,6 @@
       return h * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10) + ms / 1000;
     },
 
-    /* SRT и WebVTT */
     _analyzeSubsText: function(content, duration, isMovie) {
       content = String(content).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
       var blocks = content.split(/\n{2,}/);
@@ -413,12 +395,9 @@
     _analyzeCueList: function(cues, duration, isMovie) {
       if (cues.length < 5) return [];
       cues.sort(function(a, b) { return a.start - b.start; });
-      var segments = this._findSegments(cues, duration || 0, isMovie);
-      if (segments.length) log('Субтитры: найдено сегментов —', segments.length);
-      return segments;
+      return this._findSegments(cues, duration || 0, isMovie);
     },
 
-    /* -------------------------------------------------------------- */
     _findSegments: function(cues, duration, isMovie) {
       var segments = [];
       var keywords = this._scanKeywords(cues, duration);
@@ -426,19 +405,15 @@
       var intro = this._findGapIntro(cues, duration, isMovie);
       var musicIntro = this._findMusicIntro(cues);
 
-      /* подтверждение заставки ключевыми словами ("Intro", "Theme"...) */
       if (intro && keywords.introHint != null &&
           keywords.introHint >= intro.start - 5 && keywords.introHint <= intro.end + 5) {
         intro.confidence = 'high';
       }
-
-      /* Для фильмов «дырка» в субтитрах без подтверждения — скорее всего
-         пролог без реплик, а не заставка. Не рискуем. */
+      /* у фильма «дырка» без подтверждения — скорее пролог, не рискуем */
       if (intro && isMovie && intro.confidence !== 'high') intro = null;
 
       if (intro && musicIntro) {
         if (musicIntro.end >= intro.start - 10 && musicIntro.start <= intro.end + 10) {
-          /* это одна и та же заставка — объединяем */
           intro.start = Math.min(intro.start, musicIntro.start);
           intro.end = Math.max(intro.end, musicIntro.end);
           intro.confidence = 'high';
@@ -453,7 +428,6 @@
         segments.push(musicIntro);
       }
 
-      /* Рекап по ключевым словам ("Previously on...", "В прошлой серии...") */
       if (keywords.recapEnd != null && keywords.recapEnd >= 15 && keywords.recapEnd <= 240) {
         var introAtZero = false;
         for (var i = 0; i < segments.length; i++) {
@@ -471,7 +445,6 @@
       return segments;
     },
 
-    /* Заставка = большая пауза между репликами в начале видео */
     _findGapIntro: function(cues, duration, isMovie) {
       var maxGap = isMovie ? 210 : 150;
       var intro = null;
@@ -500,7 +473,6 @@
       return intro;
     },
 
-    /* Заставка = серия музыкальных реплик (♪ текст песни ♪) в начале */
     _findMusicIntro: function(cues) {
       var MUSIC_RE = /[♪♫]/;
       var runs = [];
@@ -541,7 +513,6 @@
           res.introHint = cue.start;
         }
 
-        /* рекап: короткая реплика с ключевым словом в первые 60 секунд */
         if (res.recapEnd == null && cue.start < 60 && clean.length < 150 && this._matchesAny(text, KEYWORDS.recap)) {
           var end = cue.end, j = i;
           while (j + 1 < cues.length && cues[j + 1].start - cues[j].end < 8 && cues[j + 1].start - cue.start < 240) {
@@ -551,7 +522,6 @@
           res.recapEnd = end;
         }
 
-        /* титры: короткая реплика ("Directed by...") в последней трети */
         if (res.creditsAt == null && duration && cue.start > duration * 0.7 && clean.length < 60 && this._matchesAny(text, KEYWORDS.credits)) {
           res.creditsAt = cue.start;
         }
@@ -572,7 +542,7 @@
       if (!duration) return null;
       var last = cues[cues.length - 1];
 
-      /* ФИЛЬМЫ: титры ищем строго в последних 10% видео */
+      /* фильмы: титры ищем строго в последних 10% */
       if (isMovie) {
         var winStart = duration * 0.9;
         if (keywords.creditsAt != null && keywords.creditsAt >= winStart - 30) {
@@ -584,7 +554,7 @@
         return null;
       }
 
-      /* СЕРИАЛЫ: хвостовой пробел или большой пробел в последних 10 минутах */
+      /* сериалы */
       var credits = null;
       var bestGap = 0;
 
@@ -606,7 +576,6 @@
         }
       }
 
-      /* уточняем начало по "Directed by" / "Режиссёр" */
       if (keywords.creditsAt != null && keywords.creditsAt > duration * 0.7) {
         if (credits && keywords.creditsAt >= credits.start && keywords.creditsAt <= credits.end) {
           credits.start = keywords.creditsAt;
@@ -625,7 +594,7 @@
   };
 
   /* ================================================================== */
-  /*  Детектор по звуку (Web Audio)                                      */
+  /*  Детектор по звуку                                                  */
   /* ================================================================== */
   var AudioDetector = {
     _context: null,
@@ -668,7 +637,6 @@
             try { self._context.resume(); } catch (e) {}
           }
 
-          /* один MediaElementSource на один <video> (повторный вызов бросает ошибку) */
           if (self._connectedEl !== video || !self._analyser) {
             try {
               self._source = self._context.createMediaElementSource(video);
@@ -678,7 +646,7 @@
               self._analyser.connect(self._context.destination);
               self._connectedEl = video;
             } catch (e) {
-              log('AudioDetector: не удалось подключиться к видео:', e.message);
+              log('AudioDetector: подключение не удалось:', e.message);
               return finish(null);
             }
           }
@@ -690,7 +658,7 @@
           self._sampleTimer = setInterval(function() {
             try {
               if (!self._analyser) { self._stopSampling(); return finish(null); }
-              if (video.paused) return; /* на паузе не набираем «тишину» в выборку */
+              if (video.paused) return;
 
               var t = video.currentTime;
               if (t - startTime > MAX_INTRO_END || t > MAX_INTRO_END + 60) {
@@ -718,7 +686,6 @@
       });
     },
 
-    /* Громкая музыка (заставка) → тишина (диалоги) */
     _analyzeEnergy: function(samples, isMovie) {
       if (samples.length < 20) return null;
 
@@ -731,25 +698,27 @@
       }
       if (smooth.length < 10) return null;
 
-      var energies = smooth.map(function(s) { return s.energy; }).sort(function(a, b) { return a - b; });
+      var energies = [];
+      for (var s = 0; s < smooth.length; s++) energies.push(smooth[s].energy);
+      energies.sort(function(a, b) { return a - b; });
       var median = energies[Math.floor(energies.length / 2)];
       var loud = median * 1.3;
       var quiet = median * 0.8;
 
       var loudStart = null, loudCount = 0;
       for (var j = 0; j < smooth.length; j++) {
-        var s = smooth[j];
-        if (s.time > MAX_INTRO_END) break;
+        var sm = smooth[j];
+        if (sm.time > MAX_INTRO_END) break;
 
-        if (s.energy > loud) {
-          if (loudStart == null) { loudStart = s.time; loudCount = 0; }
+        if (sm.energy > loud) {
+          if (loudStart == null) { loudStart = sm.time; loudCount = 0; }
           loudCount++;
-        } else if (loudStart != null && s.energy < quiet) {
-          var len = s.time - loudStart;
+        } else if (loudStart != null && sm.energy < quiet) {
+          var len = sm.time - loudStart;
           if (len >= 15 && len <= 150 && loudCount >= 10) {
             if (isMovie && loudStart > 300) { loudStart = null; loudCount = 0; continue; }
-            log('Звук: заставка', Math.round(loudStart), '→', Math.round(s.time));
-            return { type: 'intro', start: Math.round(loudStart), end: Math.round(s.time), confidence: 'medium' };
+            log('звук: заставка', Math.round(loudStart), '→', Math.round(sm.time));
+            return { type: 'intro', start: Math.round(loudStart), end: Math.round(sm.time), confidence: 'medium' };
           }
           loudStart = null;
           loudCount = 0;
@@ -759,47 +728,43 @@
     },
 
     destroy: function() {
-      /* ВАЖНО: не закрываем AudioContext и не отключаем source —
-         иначе можно полностью заглушить звук текущего <video>. */
+      /* не закрываем AudioContext и не отключаем source — иначе можно заглушить видео */
       this._stopSampling();
     }
   };
 
   /* ================================================================== */
-  /*  Движок детекции: субтитры + звук ПАРАЛЛЕЛЬНО, с объединением       */
+  /*  Движок детекции: субтитры + звук параллельно                       */
   /* ================================================================== */
   var DetectionEngine = {
-    detect: function(video, isMovie, onUpdate) {
+    detect: function(video, isMovie, subsList, onUpdate) {
       var state = { subs: null, audio: null };
+      var self = this;
 
       function emit() {
-        var combined = DetectionEngine._combine(state.subs, state.audio, isMovie, video.duration || 0);
-        onUpdate(combined);
+        onUpdate(self._combine(state.subs, state.audio, isMovie, (video && video.duration) || 0));
       }
 
-      /* Субтитры — результат мгновенный; при пустом результате повтор через 10с
-         (дорожки могли загрузиться позже старта воспроизведения) */
-      SubtitleDetector.detect(video, isMovie).then(function(segs) {
+      SubtitleDetector.detect(video, isMovie, subsList).then(function(segs) {
         if (segs && segs.length) {
           state.subs = segs;
           emit();
-          /* субтитры уже дали заставку — звук больше не нужен, экономим ресурсы */
           var hasIntro = false;
           for (var i = 0; i < segs.length; i++) if (segs[i].type === 'intro') { hasIntro = true; break; }
           if (hasIntro) AudioDetector.stop();
         } else {
+          /* дорожки могли загрузиться позже — пробуем ещё раз через 10 секунд */
           setTimeout(function() {
             if (state.subs) return;
-            SubtitleDetector.detect(video, isMovie).then(function(segs2) {
+            SubtitleDetector.detect(video, isMovie, subsList).then(function(segs2) {
               if (state.subs) return;
               state.subs = segs2 || [];
-              emit();
+              if (state.subs.length) emit();
             });
           }, 10000);
         }
       });
 
-      /* Звук — параллельно, в фоне */
       AudioDetector.detect(video, isMovie).then(function(seg) {
         state.audio = seg;
         emit();
@@ -810,24 +775,17 @@
       var result = [];
       (subSegments || []).forEach(function(s) {
         result.push({
-          type: s.type,
-          start: Math.round(s.start),
-          end: Math.round(s.end),
-          confidence: s.confidence || 'medium',
-          source: s.source || 'detect'
+          type: s.type, start: Math.round(s.start), end: Math.round(s.end),
+          confidence: s.confidence || 'medium', source: 'detect'
         });
       });
 
       if (audioSegment) {
         var audio = {
-          type: audioSegment.type,
-          start: Math.round(audioSegment.start),
-          end: Math.round(audioSegment.end),
-          confidence: 'medium',
-          source: 'detect'
+          type: audioSegment.type, start: Math.round(audioSegment.start), end: Math.round(audioSegment.end),
+          confidence: 'medium', source: 'detect'
         };
 
-        /* у фильмов принимаем звуковую заставку только у самого начала */
         var movieLimit = duration ? Math.min(300, duration * 0.15) : 300;
         if (isMovie && audio.type === 'intro' && audio.start > movieLimit) audio = null;
 
@@ -839,15 +797,13 @@
             if (overlap > 0) { match = result[i]; break; }
           }
           if (match) {
-            /* субтитры и звук согласны — объединяем: кнопка появится раньше,
-               границы берём от субтитров (они точнее) */
             match.start = Math.min(match.start, audio.start);
             match.confidence = 'high';
-            log('Субтитры + звук подтвердили сегмент', match.type, ':', match.start, '→', match.end);
+            log('субтитры + звук подтвердили сегмент', match.type);
           } else {
             var exists = false;
             for (var k = 0; k < result.length; k++) if (result[k].type === audio.type) { exists = true; break; }
-            if (!exists) result.push(audio); /* звук нашёл то, чего не нашли субтитры */
+            if (!exists) result.push(audio);
           }
         }
       }
@@ -858,7 +814,7 @@
   };
 
   /* ================================================================== */
-  /*  API: таймаут 10с, повторные попытки, поддержка фильмов             */
+  /*  API-клиент: таймаут 10с, повторы, фильмы                           */
   /* ================================================================== */
   var ApiClient = {
     _delay: function(ms) {
@@ -885,7 +841,7 @@
             try { resolve(JSON.parse(xhr.responseText)); }
             catch (e) { reject(e); }
           } else if (xhr.status === 204 || xhr.status === 404) {
-            resolve(null); /* данных нет — это не ошибка, не ретраим */
+            resolve(null);
           } else {
             reject(new Error('HTTP ' + xhr.status));
           }
@@ -895,7 +851,6 @@
       });
     },
 
-    /* GET с повторными попытками (сеть / таймаут / 5xx) */
     _request: function(url) {
       var self = this;
       function attempt(left, delay) {
@@ -924,8 +879,8 @@
       var idParam = meta.imdbId
         ? 'imdb=' + encodeURIComponent(meta.imdbId)
         : 'tmdb=' + encodeURIComponent(meta.tmdbId);
-      var introUrl = API_INTRODB_BASE + '/get_intros?' + idParam;
-      var creditsUrl = API_INTRODB_BASE + '/get_credits?' + idParam;
+      var introUrl = 'https://api.introdb.app/get_intros?' + idParam;
+      var creditsUrl = 'https://api.introdb.app/get_credits?' + idParam;
       if (!meta.isMovie) {
         introUrl += '&season=' + meta.season + '&episode=' + meta.episode;
         creditsUrl += '&season=' + meta.season + '&episode=' + meta.episode;
@@ -997,26 +952,21 @@
       return segments;
     },
 
-    /* Цепочка источников: кэш → TheIntroDB → IntroDB → IntroHater.
-       Пустой результат кэшируем только если хоть один источник точно ответил
-       «данных нет» (при полном сетевом сбое кэш не отравляем). */
     load: function(meta) {
+      var canQuery = !!meta && (meta.isMovie || (meta.season != null && meta.episode != null));
+      if (!canQuery || !(meta.tmdbId || meta.imdbId)) {
+        return Promise.resolve({ segments: [], cached: false });
+      }
+
       var cached = SegmentCache.get(meta);
       if (cached !== null) return Promise.resolve({ segments: cached, cached: true });
 
       var self = this;
-      var hasEpisodeInfo = meta.season != null && meta.episode != null;
       var sources = [];
 
-      if (meta.tmdbId && (meta.isMovie || hasEpisodeInfo)) {
-        sources.push(function() { return self.fetchTheIntroDB(meta); });
-      }
-      if ((meta.tmdbId || meta.imdbId) && (meta.isMovie || hasEpisodeInfo)) {
-        sources.push(function() { return self.fetchIntroDB(meta); });
-      }
-      if (meta.imdbId && (meta.isMovie || hasEpisodeInfo)) {
-        sources.push(function() { return self.fetchIntroHater(meta); });
-      }
+      if (meta.tmdbId) sources.push(function() { return self.fetchTheIntroDB(meta); });
+      if (meta.tmdbId || meta.imdbId) sources.push(function() { return self.fetchIntroDB(meta); });
+      if (meta.imdbId) sources.push(function() { return self.fetchIntroHater(meta); });
 
       if (!sources.length) return Promise.resolve({ segments: [], cached: false });
 
@@ -1024,15 +974,13 @@
 
       function runNext(index) {
         if (index >= sources.length) return Promise.resolve([]);
-        return sources[index]()
-          .then(
-            function(segments) { hadSuccess = true; return segments || []; },
-            function() { return []; }
-          )
-          .then(function(segments) {
-            if (segments.length) return segments;
-            return runNext(index + 1);
-          });
+        return sources[index]().then(
+          function(segments) { hadSuccess = true; return segments || []; },
+          function() { return []; }
+        ).then(function(segments) {
+          if (segments.length) return segments;
+          return runNext(index + 1);
+        });
       }
 
       return runNext(0).then(function(segments) {
@@ -1066,7 +1014,6 @@
       var style = document.createElement('style');
       style.id = 'skip-intro-css';
       style.textContent = [
-        /* Netflix-стиль: справа внизу, прозрачный фон с размытием, плавные анимации */
         '.skip-intro-button{position:absolute;right:40px;bottom:150px;display:flex;align-items:center;padding:13px 26px 13px 20px;background:rgba(10,12,16,.55);-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(255,255,255,.28);border-radius:10px;color:#fff;font-size:1em;font-family:inherit;font-weight:600;letter-spacing:.4px;line-height:1.2;white-space:nowrap;cursor:pointer;z-index:9999;opacity:0;visibility:hidden;pointer-events:none;transform:translateY(14px);outline:none;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.45);transition:opacity .3s ease,visibility .3s ease,transform .35s cubic-bezier(.22,.8,.32,1),background .25s ease,border-color .25s ease,box-shadow .25s ease}',
         '.skip-intro-button.visible{opacity:1;visibility:visible;pointer-events:auto;transform:translateY(0)}',
         '.skip-intro-button:hover,.skip-intro-button:focus{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.7);box-shadow:0 0 0 1px rgba(255,255,255,.18),0 0 26px rgba(150,170,255,.35),0 10px 36px rgba(0,0,0,.5);transform:translateY(0) scale(1.06)}',
@@ -1080,9 +1027,6 @@
       this._cssReady = true;
     },
 
-    isVisible: function() { return this._visible; },
-
-    /* Обычный режим: просто информативная кнопка, без обратного отсчёта */
     show: function(label, opts) {
       opts = opts || {};
       this._clearCountdown();
@@ -1099,7 +1043,6 @@
       this._setVisible(true);
     },
 
-    /* Режим автопропуска: полоска прогресса + возможность отмены */
     showCountdown: function(label, opts) {
       opts = opts || {};
       this._clearCountdown();
@@ -1150,7 +1093,6 @@
       btn.setAttribute('tabindex', '1');
       btn.setAttribute('role', 'button');
 
-      /* Иконка: двойная стрелка вправо */
       var icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       icon.setAttribute('class', 'skip-intro-icon');
       icon.setAttribute('viewBox', '0 0 24 24');
@@ -1174,23 +1116,21 @@
 
       this._hintEl = document.createElement('span');
       this._hintEl.className = 'skip-intro-hint';
-      this._hintEl.textContent = '';
       btn.appendChild(this._hintEl);
 
       this._progress = document.createElement('div');
       this._progress.className = 'skip-intro-progress';
       btn.appendChild(this._progress);
 
-      /* защита от двойного срабатывания (click + keydown) и от «нажатий» скрытой кнопки */
       btn._fireSkip = function() {
-        if (!btn.classList.contains('visible')) return;
+        if (!btn.parentNode || !btn.classList.contains('visible')) return;
         var now = Date.now();
         if (now - self._lastSkipAt < 300) return;
         self._lastSkipAt = now;
         if (typeof btn._onSkip === 'function') btn._onSkip();
       };
       btn._fireCancel = function() {
-        if (!btn.classList.contains('visible')) return;
+        if (!btn.parentNode || !btn.classList.contains('visible')) return;
         if (typeof btn._onCancel === 'function') btn._onCancel();
       };
 
@@ -1200,9 +1140,8 @@
         btn._fireSkip();
       });
 
-      /* Клавиатура Lampa (числовые коды, в т.ч. кнопки ТВ-пультов) */
       btn._lampaKeyDown = function(e) {
-        if (!btn.classList.contains('visible')) return;
+        if (!btn.parentNode || !btn.classList.contains('visible')) return;
         var code = e.code;
         var skipKeys = Settings.getSkipKeys();
         var cancelKeys = Settings.getCancelKeys();
@@ -1217,8 +1156,7 @@
       };
 
       btn._lampaKeyUp = function(e) {
-        if (!btn.classList.contains('visible')) return;
-        /* некоторые платформы присылают OK только на keyup */
+        if (!btn.parentNode || !btn.classList.contains('visible')) return;
         if (inArray(self._OK_CODES, e.code)) {
           var skipKeys = Settings.getSkipKeys();
           if (skipKeys.indexOf(13) !== -1 || skipKeys.indexOf(29443) !== -1 || skipKeys.indexOf(65385) !== -1) {
@@ -1228,14 +1166,15 @@
         }
       };
 
-      if (Lampa.Keypad && Lampa.Keypad.listener) {
-        Lampa.Keypad.listener.follow('keydown', btn._lampaKeyDown);
-        Lampa.Keypad.listener.follow('keyup', btn._lampaKeyUp);
-      }
+      try {
+        if (Lampa.Keypad && Lampa.Keypad.listener) {
+          Lampa.Keypad.listener.follow('keydown', btn._lampaKeyDown);
+          Lampa.Keypad.listener.follow('keyup', btn._lampaKeyUp);
+        }
+      } catch (e) {}
 
-      /* Обычная DOM-клавиатура (перехват в фазе захвата, как в оригинале) */
       btn._domKeyDown = function(e) {
-        if (!btn.classList.contains('visible')) return;
+        if (!btn.parentNode || !btn.classList.contains('visible')) return;
         var code = e.keyCode;
         var skipKeys = Settings.getSkipKeys();
         var cancelKeys = Settings.getCancelKeys();
@@ -1254,15 +1193,6 @@
       this._button = btn;
       var host = document.querySelector('.player') || document.body;
       host.appendChild(btn);
-
-      /* форсируем проигрывание анимации появления */
-      setTimeout(function() {
-        if (self._button === btn && btn.classList.contains('visible')) {
-          btn.classList.remove('visible');
-          void btn.offsetWidth;
-          btn.classList.add('visible');
-        }
-      }, 60);
     },
 
     _startCountdown: function(onSkip, duration) {
@@ -1299,7 +1229,7 @@
       var btn = this._button;
       if (btn) {
         try {
-          if (Lampa.Keypad && Lampa.Keypad.listener && Lampa.Keypad.listener.unfollow) {
+          if (Lampa.Keypad && Lampa.Keypad.listener && typeof Lampa.Keypad.listener.unfollow === 'function') {
             Lampa.Keypad.listener.unfollow('keydown', btn._lampaKeyDown);
             Lampa.Keypad.listener.unfollow('keyup', btn._lampaKeyUp);
           }
@@ -1322,73 +1252,126 @@
     _video: null,
     _meta: null,
     _segments: [],
+    _subsList: [],
     _dismissed: {},
     _autoHandled: {},
     _activeKey: null,
     _shownAuto: null,
     _countdownActive: false,
     _timeHandler: null,
-    _lastTime: null,
-    _lastDuration: 0,
-    _startAt: 0,
+    _generation: 0,
+    _initAt: 0,
+    _currentSrc: '',
+    _rolloverAt: 0,
+    _watchdog: null,
 
     init: function() {
       var self = this;
 
-      /* подписываемся на оба API событий — с защитой от дублей */
-      if (Lampa.Player && Lampa.Player.listener && Lampa.Player.listener.follow) {
-        Lampa.Player.listener.follow('start', function(e) { self._onStart(e); });
-        Lampa.Player.listener.follow('destroy', function() { self._onPlayerDestroy(); });
-      }
-      if (Lampa.Listener && Lampa.Listener.follow) {
-        Lampa.Listener.follow('player', function(e) {
-          if (!e) return;
-          if (e.type === 'start') self._onStart(e.data || e);
-          else if (e.type === 'destroy') self._onPlayerDestroy();
-        });
-      }
+      /* подписка №1 — основной способ */
+      try {
+        if (window.Lampa && Lampa.Player && Lampa.Player.listener && Lampa.Player.listener.follow) {
+          Lampa.Player.listener.follow('start', function(e) { self._onStart(e, 'player'); });
+          Lampa.Player.listener.follow('destroy', function() { self._onDestroy('player'); });
+        } else {
+          log('Lampa.Player.listener недоступен');
+        }
+      } catch (e) { log('подписка Player.listener:', e); }
+
+      /* подписка №2 — запасной канал */
+      try {
+        if (window.Lampa && Lampa.Listener && Lampa.Listener.follow) {
+          Lampa.Listener.follow('player', function(e) {
+            if (!e || typeof e !== 'object') return;
+            if (e.type === 'start') self._onStart(e.data || e, 'listener');
+            else if (e.type === 'destroy') self._onDestroy('listener');
+          });
+        }
+      } catch (e) { log('подписка Listener:', e); }
+
+      this._startWatchdog();
     },
 
-    _onStart: function(e) {
-      var now = Date.now();
-      if (now - this._startAt < 1500) return; /* защита от двойного события */
-      this._startAt = now;
+    /* ------------------- события плеера ------------------- */
 
+    _onStart: function(e, via) {
+      this._rolloverAt = 0;
       if (!Settings.isEnabled()) return;
 
-      this._reset();
+      var payload = this._normalizePayload(e);
+      var meta = this._resolveMeta(payload);
+
+      /* защита от дублей: игнорируем только если недавно инициализировались
+         и новые данные НЕ лучше имеющихся */
+      if (Date.now() - this._initAt < 2000 && this._meta &&
+          this._metaQuality(meta) <= this._metaQuality(this._meta)) {
+        return;
+      }
+
+      log('start (' + via + '): ' + (meta.isMovie ? 'фильм' : 'сериал S' + meta.season + 'E' + meta.episode) +
+          ', tmdb=' + meta.tmdbId + ', imdb=' + meta.imdbId + (meta.title ? ', «' + meta.title + '»' : ''));
+
+      try {
+        if (payload && typeof payload === 'object') {
+          var keys = Object.keys(payload);
+          log('payload:', keys.slice(0, 25).join(','));
+        }
+      } catch (e2) {}
+
+      this._initPlayback(meta, payload, null);
+    },
+
+    _onDestroy: function(via) {
+      this._generation++;
+      this._teardownPlayback();
       this._meta = null;
+      this._subsList = [];
+      SkipButton.destroy();
+      log('destroy (' + via + ')');
+    },
 
-      var meta = this._resolveMeta(e);
-      if (!meta) return;
+    /* ------------------- инициализация ------------------- */
 
-      /* Фильмы можно отключить отдельной настройкой */
-      if (meta.isMovie && !Settings.isMoviesEnabled()) return;
+    _normalizePayload: function(e) {
+      if (!e || typeof e !== 'object') return null;
+      if (typeof e.type === 'string' && e.data && typeof e.data === 'object') return e.data;
+      return e;
+    },
+
+    _metaQuality: function(m) {
+      if (!m) return -1;
+      var q = 0;
+      if (m.tmdbId || m.imdbId) q += 2;
+      if (!m.isMovie) q += 1;
+      return q;
+    },
+
+    _initPlayback: function(meta, payload, knownVideo) {
+      var gen = ++this._generation;
+      this._initAt = Date.now();
+      this._teardownPlayback();
 
       this._meta = meta;
-      log('Старт:', meta.isMovie ? 'фильм' : 'сериал S' + meta.season + 'E' + meta.episode,
-        '| tmdb:', meta.tmdbId, '| imdb:', meta.imdbId, '|', meta.title || '');
+      this._subsList = this._collectSubtitles(payload);
+
+      if (meta && meta.isMovie && !Settings.isMoviesEnabled()) {
+        log('фильмы отключены в настройках');
+        return;
+      }
 
       var self = this;
-      this._waitForVideo(function(video) {
-        if (!self._meta) return;
+      this._findVideo(function(video) {
+        if (gen !== self._generation) return;
         self._video = video;
         self._timeHandler = function() { self._onTimeUpdate(); };
-        video.addEventListener('timeupdate', self._timeHandler);
+        try { video.addEventListener('timeupdate', self._timeHandler); } catch (e) {}
         self._loadSegments();
-      });
+      }, knownVideo);
     },
 
-    _onPlayerDestroy: function() {
-      this._meta = null;
-      this._reset();
-      SkipButton.destroy();
-      AudioDetector.destroy();
-    },
-
-    _reset: function() {
+    _teardownPlayback: function() {
       if (this._video && this._timeHandler) {
-        this._video.removeEventListener('timeupdate', this._timeHandler);
+        try { this._video.removeEventListener('timeupdate', this._timeHandler); } catch (e) {}
       }
       this._video = null;
       this._timeHandler = null;
@@ -1398,119 +1381,262 @@
       this._activeKey = null;
       this._shownAuto = null;
       this._countdownActive = false;
-      this._lastTime = null;
-      this._lastDuration = 0;
+      this._currentSrc = '';
       SkipButton.hide();
       AudioDetector.stop();
     },
 
-    _softReset: function() {
-      /* сброс содержимого без открепления слушателей (переход на след. серию) */
-      this._segments = [];
-      this._dismissed = {};
-      this._autoHandled = {};
-      this._activeKey = null;
-      this._shownAuto = null;
-      this._countdownActive = false;
-      this._lastTime = null;
-      this._lastDuration = 0;
-      SkipButton.hide();
-    },
-
-    _waitForVideo: function(callback, attempt) {
+    _findVideo: function(cb, knownVideo) {
       var self = this;
-      attempt = attempt || 0;
-      if (!this._meta) return;
-      var video = document.querySelector('.player video') || document.querySelector('video');
-      if (video) return callback(video);
-      if (attempt < 60) {
-        setTimeout(function() { self._waitForVideo(callback, attempt + 1); }, 500);
-      }
+      if (knownVideo) { cb(knownVideo); return; }
+      var gen = this._generation;
+      var attempt = 0;
+      (function poll() {
+        if (gen !== self._generation) return;
+        var video = document.querySelector('.player video') || document.querySelector('video');
+        if (video) { cb(video); return; }
+        if (attempt++ < 60) setTimeout(poll, 500);
+      })();
     },
 
-    /* -------------------------------------------------------------- */
-    /*  Метаданные: определяем фильм или сериал, вытаскиваем id         */
-    /* -------------------------------------------------------------- */
-    _resolveMeta: function(e) {
-      try {
-        var payload = e || {};
-        if (payload.data && typeof payload.data === 'object') payload = payload.data;
+    _videoSrc: function(video) {
+      try { return video.currentSrc || video.src || ''; } catch (e) { return ''; }
+    },
 
-        var item = payload.item || payload.card || payload.video || payload.movie || payload;
-        var holders = [item, item.movie, item.card, item.video, payload, payload.movie, payload.card];
+    /* ------------------- сторож (watchdog) ------------------- */
+    /* если событие start не пришло — заметим воспроизведение сами */
 
-        function toNum(v) {
-          var n = parseInt(v, 10);
-          return isNaN(n) ? null : n;
-        }
+    _startWatchdog: function() {
+      var self = this;
+      if (this._watchdog) return;
+      this._watchdog = setInterval(function() {
+        try {
+          if (!Settings.isEnabled()) return;
 
-        var tmdbId = null, imdbId = null, tvId = null, season = null, episode = null, title = '', isTv = false;
+          if (self._meta) { self._checkRolloverSrc(); return; }
 
-        for (var i = 0; i < holders.length; i++) {
-          var h = holders[i];
-          if (!h || typeof h !== 'object') continue;
-          if (tmdbId == null && h.tmdb_id != null) tmdbId = toNum(h.tmdb_id);
-          if (imdbId == null && h.imdb_id != null) imdbId = String(h.imdb_id);
-          if (tvId == null && h.tv_id != null) tvId = toNum(h.tv_id);
-          if (season == null && h.season != null) season = toNum(h.season);
-          if (episode == null && h.episode != null) episode = toNum(h.episode);
-          if (!isTv && h.number_of_seasons != null && toNum(h.number_of_seasons) > 0) isTv = true;
-          if (!title) title = h.title || h.original_title || h.name || '';
-        }
+          var video = document.querySelector('.player video') || document.querySelector('video');
+          if (!video) return;
+          var src = self._videoSrc(video);
+          if (!src || video.paused || video.currentTime <= 0) return;
 
-        /* запасной вариант: элемент плейлиста TMDB-источника */
-        if (tmdbId == null && tvId == null) {
-          for (var j = 0; j < holders.length; j++) {
-            if (holders[j] && holders[j].source === 'tmdb' && holders[j].id != null) {
-              tvId = toNum(holders[j].id);
-              break;
-            }
+          log('watchdog: воспроизведение идёт без события start — включаюсь сам');
+          self._initPlayback(self._resolveMeta(null), null, video);
+        } catch (e) {}
+      }, 2000);
+    },
+
+    _checkRolloverSrc: function() {
+      var video = this._video;
+      if (!video) return;
+      var src = this._videoSrc(video);
+      if (!src) return;
+
+      if (!this._currentSrc) { this._currentSrc = src; return; }
+      if (src === this._currentSrc) { this._rolloverAt = 0; return; }
+
+      /* src мог смениться посреди воспроизведения (смена качества) — не реагируем */
+      if (video.currentTime >= 15) return;
+
+      /* начало нового видео (например, следующая серия) без события start */
+      if (!this._rolloverAt) { this._rolloverAt = Date.now(); return; }
+      if (Date.now() - this._rolloverAt < 5000) return; /* даём шанс прийти событию start */
+
+      this._rolloverAt = 0;
+      log('watchdog: смена видео без события start — переинициализация');
+      this._initPlayback(this._resolveMeta(null), null, video);
+    },
+
+    /* ------------------- метаданные ------------------- */
+
+    _collectSubtitles: function(payload) {
+      var result = [];
+      if (!payload || typeof payload !== 'object') return result;
+      var keys = ['subtitle', 'subtitles', 'subs', 'customSubs'];
+      for (var i = 0; i < keys.length; i++) {
+        var arr = payload[keys[i]];
+        if (arr && typeof arr === 'object') {
+          if (!Array.isArray(arr)) arr = [arr];
+          for (var j = 0; j < arr.length; j++) {
+            if (arr[j] && arr[j].url) result.push(arr[j]);
           }
         }
+      }
+      if (result.length) log('субтитров найдено:', result.length);
+      return result;
+    },
 
-        /* Фильм = нет season/episode и карточка не является ТВ-шоу */
-        var isMovie = !isTv && (season == null || episode == null);
-        if (isMovie) { season = null; episode = null; }
+    _num: function(v) {
+      if (v == null) return null;
+      var n = parseInt(v, 10);
+      return isNaN(n) ? null : n;
+    },
 
-        /* для сериалов prefer tv_id (id шоу), для фильмов — id фильма */
-        var contentTmdb = isMovie ? (tmdbId != null ? tmdbId : tvId) : (tvId != null ? tvId : tmdbId);
+    _currentPlaylistItem: function() {
+      try {
+        if (!window.Lampa || !Lampa.Player) return null;
+        var playlist = typeof Lampa.Player.playlist === 'function' ? Lampa.Player.playlist() : null;
+        if (!playlist || !playlist.length) return null;
+        if (typeof Lampa.Player.played === 'function') {
+          var p = Lampa.Player.played();
+          if (typeof p === 'number' && playlist[p]) return playlist[p];
+          if (p && typeof p === 'object') return p;
+        }
+      } catch (e) {}
+      return null;
+    },
 
-        return {
-          tmdbId: contentTmdb,
-          imdbId: imdbId,
-          season: season,
-          episode: episode,
-          isMovie: isMovie,
-          title: title,
-          trackable: !!(contentTmdb || imdbId),
-          contentKey: contentTmdb ? 't' + contentTmdb : (imdbId ? 'i' + imdbId : null)
-        };
-      } catch (err) {
-        log('_resolveMeta error:', err);
-        return null;
+    _looksLikeCard: function(node) {
+      if (node.url) return false;             /* это видео-объект, не карточка */
+      if (node.id == null) return false;
+      var hasName = !!(node.title || node.name || node.original_title || node.original_name);
+      var hasCardField = !!(node.poster_path || node.backdrop_path || node.release_date ||
+        node.first_air_date || node.number_of_seasons || node.original_title || node.original_name);
+      return hasName && hasCardField;
+    },
+
+    /* глубокий скан объекта в поисках id/сезона/эпизода */
+    _scanMeta: function(node, depth, res, visited) {
+      if (!node || typeof node !== 'object' || depth > 4) return;
+      if (node.nodeType) return; /* DOM-узлы пропускаем */
+      if (visited.length > 400) return;
+      if (visited.indexOf(node) !== -1) return;
+      visited.push(node);
+
+      var i;
+
+      if (Array.isArray(node)) {
+        var n = Math.min(node.length, 40);
+        for (i = 0; i < n; i++) this._scanMeta(node[i], depth + 1, res, visited);
+        return;
+      }
+
+      if (res.season == null && node.season != null) {
+        var s = this._num(node.season);
+        if (s != null) res.season = s;
+      }
+      if (res.episode == null && node.episode != null) {
+        var ep = this._num(node.episode);
+        if (ep != null) res.episode = ep;
+      }
+
+      if (res.tvId == null && node.tv_id != null) {
+        var tv = this._num(node.tv_id);
+        if (tv != null) res.tvId = tv;
+      }
+      if (res.tmdbId == null && node.tmdb_id != null) {
+        var tm = this._num(node.tmdb_id);
+        if (tm != null) res.tmdbId = tm;
+      }
+      if (res.imdbId == null && typeof node.imdb_id === 'string' && node.imdb_id) {
+        res.imdbId = node.imdb_id;
+      }
+
+      if (res.cardId == null && node.id != null && this._looksLikeCard(node)) {
+        var cid = this._num(node.id);
+        if (cid != null) {
+          res.cardId = cid;
+          res.cardIsTv = !!(node.number_of_seasons || node.first_air_date ||
+            node.original_name || node.last_episode_to_air || node.next_episode_to_air || node.episode_run_time);
+        }
+      }
+
+      if (node.number_of_seasons != null && this._num(node.number_of_seasons) > 0) res.tvMarkers++;
+      if (node.first_air_date || node.original_name || node.last_episode_to_air || node.next_episode_to_air) res.tvMarkers++;
+      if (node.seasons && Array.isArray(node.seasons) && node.seasons.length) res.tvMarkers++;
+
+      if (!res.title) res.title = node.title || node.name || '';
+
+      for (var key in node) {
+        if (!Object.prototype.hasOwnProperty.call(node, key)) continue;
+        var v = node[key];
+        if (v && typeof v === 'object') this._scanMeta(v, depth + 1, res, visited);
       }
     },
 
-    /* -------------------------------------------------------------- */
-    /*  Загрузка сегментов: API → кэш детекции → живая детекция         */
-    /* -------------------------------------------------------------- */
+    _resolveMeta: function(payload) {
+      var res = { season: null, episode: null, tvId: null, tmdbId: null, imdbId: null, cardId: null, cardIsTv: false, tvMarkers: 0, title: '' };
+      var visited = [];
+
+      try { this._scanMeta(payload, 0, res, visited); } catch (e) { log('scan payload:', e); }
+
+      /* запасной источник №1 — текущий элемент плейлиста */
+      try {
+        var item = this._currentPlaylistItem();
+        if (item && item !== payload) this._scanMeta(item, 0, res, visited);
+      } catch (e) {}
+
+      /* запасной источник №2 — активная страница (карточка фильма/сериала) */
+      try {
+        if (window.Lampa && Lampa.Activity && typeof Lampa.Activity.active === 'function') {
+          var act = Lampa.Activity.active();
+          if (act) {
+            var wrap = {};
+            if (act.movie) wrap.movie = act.movie;
+            if (act.card) wrap.card = act.card;
+            if (act.season != null) wrap.season = act.season;
+            if (act.episode != null) wrap.episode = act.episode;
+            this._scanMeta(wrap, 0, res, visited);
+          }
+        }
+      } catch (e) {}
+
+      var hasEpisodeInfo = res.season != null && res.episode != null;
+      var isTv = hasEpisodeInfo || res.tvMarkers > 0 || res.cardIsTv;
+      var isMovie = !isTv;
+
+      var tmdbId = null;
+      if (isTv) {
+        tmdbId = res.tvId != null ? res.tvId : (res.tmdbId != null ? res.tmdbId : res.cardId);
+      } else {
+        tmdbId = res.tmdbId != null ? res.tmdbId : (res.cardId != null ? res.cardId : res.tvId);
+      }
+
+      /* у видео-объекта фильма id — это tmdb id */
+      if (isMovie && tmdbId == null && payload && payload.url && payload.id != null) {
+        var pid = this._num(payload.id);
+        if (pid != null) tmdbId = pid;
+      }
+
+      var contentKey = null;
+      if (tmdbId != null) contentKey = (isMovie ? 'm' : 's') + tmdbId;
+      else if (res.imdbId) contentKey = 'i' + res.imdbId;
+
+      return {
+        tmdbId: tmdbId,
+        imdbId: res.imdbId || null,
+        season: isMovie ? null : res.season,
+        episode: isMovie ? null : res.episode,
+        isMovie: isMovie,
+        title: res.title || '',
+        trackable: !!(tmdbId || res.imdbId),
+        contentKey: contentKey
+      };
+    },
+
+    /* ------------------- загрузка сегментов ------------------- */
+
     _loadSegments: function() {
       var self = this;
       var meta = this._meta;
       var video = this._video;
+      if (!meta || !video) return;
 
       function apply(segments, from) {
         if (self._meta !== meta) return;
-        var clean = self._sanitizeSegments(segments, video && video.duration || 0);
+        var clean = self._sanitizeSegments(segments, video.duration || 0);
         if (clean.length) {
           self._segments = clean;
-          log('Сегменты (' + from + '):', clean.length);
+          var info = [];
+          for (var i = 0; i < clean.length; i++) {
+            info.push(clean[i].type + ' ' + clean[i].start + '-' + clean[i].end);
+          }
+          log('сегменты (' + from + '):', info.join(', '));
         }
       }
 
-      /* нет id — базы недоступны, работаем только детекцией (без кэша,
-         чтобы не смешивать результаты разных тайтлов) */
       if (!meta.trackable) {
+        log('нет ID — работает только умная детекция');
         this._startDetection();
         return;
       }
@@ -1534,14 +1660,15 @@
       if (!Settings.isDetectEnabled() || !this._video || !this._meta) return;
       var self = this;
       var meta = this._meta;
+      var gen = this._generation;
 
-      DetectionEngine.detect(this._video, meta.isMovie, function(segments) {
-        if (self._meta !== meta || !segments || !segments.length) return;
+      DetectionEngine.detect(this._video, meta.isMovie, this._subsList, function(segments) {
+        if (gen !== self._generation || self._meta !== meta || !segments || !segments.length) return;
         var clean = self._sanitizeSegments(segments, self._video ? self._video.duration || 0 : 0);
         if (!clean.length) return;
         self._segments = clean;
         if (meta.trackable) DetectedCache.set(meta, clean);
-        log('Детекция: найдено сегментов —', clean.length);
+        log('детекция: найдено сегментов —', clean.length);
       });
     },
 
@@ -1567,23 +1694,22 @@
       return result;
     },
 
-    /* -------------------------------------------------------------- */
-    /*  Мониторинг воспроизведения                                       */
-    /* -------------------------------------------------------------- */
+    /* ------------------- мониторинг воспроизведения ------------------- */
+
     _onTimeUpdate: function() {
       if (!this._video || !this._meta) return;
 
       var video = this._video;
       var t = video.currentTime;
-      var d = video.duration || 0;
 
-      this._checkRollover(t, d);
-      this._lastTime = t;
-      this._lastDuration = d;
+      var src = this._videoSrc(video);
+      if (src && !this._currentSrc) this._currentSrc = src;
+
+      if (!this._segments.length) return;
 
       var seg = this._findActive(t);
 
-      if (!seg) {
+      if (!seg || seg.end - t < 5) {
         if (this._activeKey !== null || this._countdownActive) {
           this._activeKey = null;
           this._shownAuto = null;
@@ -1594,16 +1720,6 @@
       }
 
       var key = this._segmentKey(seg);
-
-      /* до конца сегмента меньше 5 секунд — кнопка не имеет смысла */
-      if (seg.end - t < 5) {
-        this._activeKey = null;
-        this._shownAuto = null;
-        this._countdownActive = false;
-        SkipButton.hide();
-        return;
-      }
-
       var smartSkipHit = this._meta.trackable && SmartSkip.hasSkipped(this._meta.contentKey, seg.type);
       var wantAuto = !this._dismissed[key] && !this._autoHandled[key] &&
         (Settings.isAutoSkip() || smartSkipHit);
@@ -1658,7 +1774,7 @@
       this._activeKey = null;
       this._shownAuto = null;
       SkipButton.hide();
-      log('Пропущено:', seg.type, seg.start, '→', seg.end);
+      log('пропущено:', seg.type, seg.start, '→', seg.end);
     },
 
     _cancelSegment: function(seg) {
@@ -1668,49 +1784,15 @@
         SmartSkip.forgetSkip(this._meta.contentKey, seg.type);
       }
       SkipButton.hide();
-      log('Автопропуск отменён:', seg.type);
-    },
-
-    /* Переход на следующую серию внутри того же <video> (если событие start не пришло) */
-    _checkRollover: function(t, d) {
-      if (this._lastTime == null || !this._lastDuration || !d) return;
-      if (t < 10 && this._lastTime > 60 && this._lastTime >= this._lastDuration * 0.85 && d !== this._lastDuration) {
-        var item = this._getCurrentItem();
-        if (item) {
-          var meta = this._resolveMeta({ item: item });
-          if (meta) {
-            log('Обнаружен переход на следующую серию');
-            this._softReset();
-            this._meta = meta;
-            this._loadSegments();
-            return;
-          }
-        }
-        this._lastTime = null;
-      }
-    },
-
-    _getCurrentItem: function() {
-      try {
-        if (!Lampa.Player) return null;
-        var playlist = typeof Lampa.Player.playlist === 'function' ? Lampa.Player.playlist() : null;
-        if (!playlist || !playlist.length) return null;
-        var played = typeof Lampa.Player.played === 'function' ? Lampa.Player.played() : null;
-        if (typeof played === 'number') return playlist[played] || null;
-        if (played && typeof played === 'object') {
-          var idx = playlist.indexOf(played);
-          return idx !== -1 ? played : null;
-        }
-      } catch (e) {}
-      return null;
+      log('автопропуск отменён:', seg.type);
     }
   };
 
   /* ================================================================== */
   /*  Запуск                                                             */
   /* ================================================================== */
-  Settings.init();
-  Controller.init();
-  log('Плагин загружен, версия ' + window.__skipIntroVersion);
+  try { Settings.init(); } catch (e) { log('Settings.init:', e); }
+  try { Controller.init(); } catch (e) { log('Controller.init:', e); }
+  log('плагин загружен, версия ' + window.__skipIntroVersion);
 
 })();
