@@ -1,325 +1,260 @@
 /**
- * Lampa Monitor v3.0
- * Простой и надежный монитор для Lampa
- * Работает через DOM - не зависит от API
+ * Lampa Monitor v4.0
+ * Простой монитор для Lampa
  */
 
 (function() {
     'use strict';
 
-    // Проверяем что мы в Lampa
-    if (window.location.hostname.indexOf('lampa') === -1 && 
-        window.location.hostname.indexOf('cub') === -1) {
-        console.log('[Monitor] Не Lampa, выходим');
-        return;
-    }
+    // Не запускаем повторно
+    if (window.lampaMonitorActive) return;
+    window.lampaMonitorActive = true;
 
-    // Переменные
-    var startTime = Date.now();
-    var panel = null;
-    var timerEl = null;
-    var movieEl = null;
-    var posterEl = null;
-    var lastMovie = '';
+    console.log('[Monitor] Загрузка плагина...');
 
-    // ===== СТИЛИ =====
-    var css = `
-        #lampamonitor {
-            position: fixed;
-            top: 15px;
-            right: 15px;
-            z-index: 100000;
-            background: rgba(10,10,20,0.95);
-            border: 1px solid rgba(79,195,247,0.4);
-            border-radius: 12px;
-            padding: 15px;
-            width: 280px;
-            color: #fff;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.7);
-            backdrop-filter: blur(10px);
-        }
-        #lampamonitor .lm-head {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-        #lampamonitor .lm-title {
-            font-size: 13px;
-            font-weight: 600;
-            color: #4fc3f7;
-        }
-        #lampamonitor .lm-close {
-            background: none;
-            border: none;
-            color: rgba(255,255,255,0.5);
-            font-size: 20px;
-            cursor: pointer;
-            padding: 0 5px;
-        }
-        #lampamonitor .lm-close:hover {
-            color: #fff;
-        }
-        #lampamonitor .lm-time {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-            padding: 10px;
-            background: rgba(79,195,247,0.15);
-            border-radius: 8px;
-        }
-        #lampamonitor .lm-time-label {
-            font-size: 12px;
-            color: rgba(255,255,255,0.7);
-        }
-        #lampamonitor .lm-time-val {
-            font-family: 'Courier New', monospace;
-            font-size: 18px;
-            font-weight: bold;
-            color: #4fc3f7;
-        }
-        #lampamonitor .lm-movie {
-            display: flex;
-            gap: 12px;
-            align-items: flex-start;
-        }
-        #lampamonitor .lm-poster {
-            width: 70px;
-            height: 105px;
-            border-radius: 8px;
-            background: rgba(255,255,255,0.1);
-            background-size: cover;
-            background-position: center;
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-        }
-        #lampamonitor .lm-info {
-            flex: 1;
-            min-width: 0;
-        }
-        #lampamonitor .lm-movie-title {
-            font-size: 14px;
-            font-weight: 500;
-            line-height: 1.3;
-            margin-bottom: 5px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical;
-        }
-        #lampamonitor .lm-movie-meta {
-            font-size: 11px;
-            color: rgba(255,255,255,0.5);
-        }
-        #lampamonitor .lm-status {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin-top: 10px;
-            padding-top: 10px;
-            border-top: 1px solid rgba(255,255,255,0.05);
-            font-size: 10px;
-            color: rgba(255,255,255,0.3);
-        }
-        #lampamonitor .lm-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: #4caf50;
-        }
-    `;
+    // Ждем загрузки Lampa
+    var checkInterval = setInterval(function() {
+        // Проверяем что приложение загрузилось
+        var appLoaded = document.querySelector('.head') || 
+                       document.querySelector('.card') ||
+                       document.querySelector('.menu') ||
+                       document.body.children.length > 3;
 
-    // ===== СОЗДАНИЕ ПАНЕЛИ =====
-    function createPanel() {
-        // Добавляем стили
-        var style = document.createElement('style');
-        style.textContent = css;
-        document.head.appendChild(style);
+        if (appLoaded) {
+            clearInterval(checkInterval);
+            console.log('[Monitor] Lampa загружена, запускаю монитор');
+            setTimeout(startMonitor, 1000);
+        }
+    }, 500);
 
-        // Создаем панель
-        panel = document.createElement('div');
-        panel.id = 'lampamonitor';
-        panel.innerHTML = `
-            <div class="lm-head">
-                <div class="lm-title">🎬 Монитор</div>
-                <button class="lm-close" id="lm-close">×</button>
-            </div>
-            <div class="lm-time">
-                <span class="lm-time-label">Время:</span>
-                <span class="lm-time-val" id="lm-timer">00:00:00</span>
-            </div>
-            <div class="lm-movie">
-                <div class="lm-poster" id="lm-poster">🎬</div>
-                <div class="lm-info">
-                    <div class="lm-movie-title" id="lm-movie">Определение...</div>
-                    <div class="lm-movie-meta" id="lm-meta">Поиск фильма</div>
+    // Если через 15 сек не загрузилось - запускаем всё равно
+    setTimeout(function() {
+        if (!window.lampaMonitorStarted) {
+            startMonitor();
+        }
+    }, 15000);
+
+    function startMonitor() {
+        window.lampaMonitorStarted = true;
+
+        // ===== ПЕРЕМЕННЫЕ =====
+        var startTime = Date.now();
+        var panel, timeEl, titleEl, posterEl, metaEl;
+        var lastTitle = '';
+
+        // ===== СОЗДАНИЕ ПАНЕЛИ =====
+        function createUI() {
+            // Стили
+            var style = document.createElement('style');
+            style.textContent = `
+                #lampa-mon {
+                    position: fixed;
+                    top: 10px;
+                    right: 10px;
+                    z-index: 999999;
+                    background: rgba(0,0,0,0.9);
+                    border: 1px solid #4fc3f7;
+                    border-radius: 10px;
+                    padding: 12px;
+                    width: 250px;
+                    color: #fff;
+                    font-family: sans-serif;
+                    font-size: 12px;
+                }
+                #lampa-mon .mon-head {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 8px;
+                    padding-bottom: 8px;
+                    border-bottom: 1px solid #333;
+                }
+                #lampa-mon .mon-title {
+                    color: #4fc3f7;
+                    font-weight: bold;
+                }
+                #lampa-mon .mon-close {
+                    background: none;
+                    border: none;
+                    color: #888;
+                    font-size: 16px;
+                    cursor: pointer;
+                }
+                #lampa-mon .mon-time {
+                    background: rgba(79,195,247,0.1);
+                    padding: 8px;
+                    border-radius: 5px;
+                    margin-bottom: 8px;
+                    display: flex;
+                    justify-content: space-between;
+                }
+                #lampa-mon .mon-timer {
+                    color: #4fc3f7;
+                    font-weight: bold;
+                    font-family: monospace;
+                    font-size: 16px;
+                }
+                #lampa-mon .mon-movie {
+                    display: flex;
+                    gap: 10px;
+                }
+                #lampa-mon .mon-poster {
+                    width: 60px;
+                    height: 90px;
+                    background: #222;
+                    border-radius: 5px;
+                    background-size: cover;
+                    background-position: center;
+                    flex-shrink: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                #lampa-mon .mon-info {
+                    flex: 1;
+                    min-width: 0;
+                }
+                #lampa-mon .mon-name {
+                    font-size: 13px;
+                    font-weight: bold;
+                    margin-bottom: 4px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                #lampa-mon .mon-meta {
+                    font-size: 10px;
+                    color: #888;
+                }
+            `;
+            document.head.appendChild(style);
+
+            // Панель
+            panel = document.createElement('div');
+            panel.id = 'lampa-mon';
+            panel.innerHTML = `
+                <div class="mon-head">
+                    <span class="mon-title">📊 Монитор</span>
+                    <button class="mon-close" onclick="this.parentElement.parentElement.remove()">×</button>
                 </div>
-            </div>
-            <div class="lm-status">
-                <div class="lm-dot"></div>
-                <span>Активен</span>
-            </div>
-        `;
+                <div class="mon-time">
+                    <span>⏱ Время:</span>
+                    <span class="mon-timer" id="mon-timer">00:00:00</span>
+                </div>
+                <div class="mon-movie">
+                    <div class="mon-poster" id="mon-poster">🎬</div>
+                    <div class="mon-info">
+                        <div class="mon-name" id="mon-name">Ожидание...</div>
+                        <div class="mon-meta" id="mon-meta">Поиск фильма</div>
+                    </div>
+                </div>
+            `;
 
-        document.body.appendChild(panel);
+            document.body.appendChild(panel);
 
-        // Элементы
-        timerEl = document.getElementById('lm-timer');
-        movieEl = document.getElementById('lm-movie');
-        posterEl = document.getElementById('lm-poster');
-
-        // Закрытие
-        document.getElementById('lm-close').addEventListener('click', function() {
-            panel.style.display = 'none';
-            clearInterval(updateInterval);
-        });
-    }
-
-    // ===== ПОИСК ФИЛЬМА =====
-    function findMovie() {
-        try {
-            // Метод 1: Заголовок из URL
-            var url = new URL(window.location.href);
-            var urlTitle = url.searchParams.get('title');
-            if (urlTitle && urlTitle !== 'Главная' && urlTitle.length > 2) {
-                return {
-                    title: urlTitle,
-                    meta: 'Из URL'
-                };
-            }
-
-            // Метод 2: Полная страница фильма
-            var selectors = [
-                '.full-start__title',
-                '.full-start .title',
-                '.full-start h1',
-                '.full-start .name',
-                '.card__title',
-                '.card__name'
-            ];
-
-            for (var i = 0; i < selectors.length; i++) {
-                var el = document.querySelector(selectors[i]);
-                if (el && el.textContent.trim().length > 2) {
-                    return {
-                        title: el.textContent.trim(),
-                        meta: 'Из DOM'
-                    };
-                }
-            }
-
-            // Метод 3: Первый заголовок h1
-            var h1 = document.querySelector('h1');
-            if (h1 && h1.textContent.trim().length > 2 && 
-                h1.textContent !== 'Главная') {
-                return {
-                    title: h1.textContent.trim(),
-                    meta: 'Из H1'
-                };
-            }
-
-            return null;
-        } catch (e) {
-            return null;
+            timeEl = document.getElementById('mon-timer');
+            titleEl = document.getElementById('mon-name');
+            posterEl = document.getElementById('mon-poster');
+            metaEl = document.getElementById('mon-meta');
         }
-    }
 
-    // ===== ПОИСК ПОСТЕРА =====
-    function findPoster() {
-        try {
-            // Ищем TMDB постер
-            var imgs = document.querySelectorAll('img');
-            for (var i = 0; i < imgs.length; i++) {
-                var img = imgs[i];
-                var src = img.src || img.getAttribute('data-src') || '';
-                if (src.indexOf('image.tmdb.org') !== -1) {
-                    return src;
-                }
-            }
-
-            // Ищем по классу poster
-            var posterImgs = document.querySelectorAll('.card__img img, .full-start__poster img, img[class*="poster"]');
-            if (posterImgs.length > 0 && posterImgs[0].src) {
-                return posterImgs[0].src;
-            }
-
-            return null;
-        } catch (e) {
-            return null;
+        // ===== ОБНОВЛЕНИЕ ВРЕМЕНИ =====
+        function updateTime() {
+            var now = Date.now();
+            var diff = now - startTime;
+            var h = Math.floor(diff / 3600000);
+            var m = Math.floor((diff % 3600000) / 60000);
+            var s = Math.floor((diff % 60000) / 1000);
+            var timeStr = (h<10?'0':'')+h+':'+(m<10?'0':'')+m+':'+(s<10?'0':'')+s;
+            if (timeEl) timeEl.textContent = timeStr;
         }
-    }
 
-    // ===== ОБНОВЛЕНИЕ ВРЕМЕНИ =====
-    function updateTime() {
-        try {
-            var elapsed = Date.now() - startTime;
-            var h = Math.floor(elapsed / 3600000);
-            var m = Math.floor((elapsed % 3600000) / 60000);
-            var s = Math.floor((elapsed % 60000) / 1000);
-
-            var timeStr = 
-                (h < 10 ? '0' + h : h) + ':' +
-                (m < 10 ? '0' + m : m) + ':' +
-                (s < 10 ? '0' + s : s);
-
-            if (timerEl) timerEl.textContent = timeStr;
-        } catch (e) {}
-    }
-
-    // ===== ОБНОВЛЕНИЕ ФИЛЬМА =====
-    function updateMovie() {
-        try {
-            var movie = findMovie();
-            if (movie && movie.title !== lastMovie) {
-                lastMovie = movie.title;
-
-                if (movieEl) {
-                    movieEl.textContent = movie.title;
+        // ===== ПОИСК ФИЛЬМА =====
+        function findMovie() {
+            try {
+                // Из URL
+                var url = window.location.href;
+                var titleMatch = url.match(/title=([^&]+)/);
+                if (titleMatch) {
+                    var title = decodeURIComponent(titleMatch[1]).replace(/\+/g, ' ');
+                    if (title && title !== 'Главная' && title.length > 2) {
+                        return { title: title, meta: 'Из URL' };
+                    }
                 }
 
-                // Ищем постер
-                var poster = findPoster();
-                if (poster && posterEl) {
-                    posterEl.style.backgroundImage = 'url("' + poster + '")';
-                    posterEl.textContent = '';
+                // Из DOM - заголовок фильма
+                var selectors = [
+                    '.full-start__title',
+                    '.card__title',
+                    '.full-start .title',
+                    'h1',
+                    '.title'
+                ];
+
+                for (var i = 0; i < selectors.length; i++) {
+                    var el = document.querySelector(selectors[i]);
+                    if (el && el.textContent.trim().length > 2) {
+                        var text = el.textContent.trim();
+                        if (text !== 'Главная' && text !== 'Lampa') {
+                            return { title: text, meta: 'Из DOM' };
+                        }
+                    }
                 }
+
+                return null;
+            } catch(e) {
+                return null;
             }
-        } catch (e) {}
-    }
+        }
 
-    // ===== ГЛАВНЫЙ ЦИКЛ =====
-    function start() {
-        createPanel();
+        // ===== ПОИСК ПОСТЕРА =====
+        function findPoster() {
+            try {
+                // Ищем TMDB постер
+                var imgs = document.querySelectorAll('img');
+                for (var i = 0; i < imgs.length; i++) {
+                    var src = imgs[i].src || imgs[i].getAttribute('data-src') || '';
+                    if (src.indexOf('image.tmdb.org') !== -1) {
+                        return src;
+                    }
+                }
+                // Фолбэк - любой постер
+                var posterImg = document.querySelector('.card__img img, img[class*="poster"]');
+                if (posterImg && posterImg.src) return posterImg.src;
+                return null;
+            } catch(e) {
+                return null;
+            }
+        }
 
-        // Обновление каждую секунду
-        var updateInterval = setInterval(function() {
-            updateTime();
-        }, 1000);
+        // ===== ОБНОВЛЕНИЕ ФИЛЬМА =====
+        function updateMovie() {
+            try {
+                var movie = findMovie();
+                if (movie && movie.title !== lastTitle) {
+                    lastTitle = movie.title;
+                    if (titleEl) titleEl.textContent = movie.title;
+                    if (metaEl) metaEl.textContent = movie.meta;
 
-        // Обновление фильма каждые 2 секунды
-        setInterval(function() {
-            updateMovie();
-        }, 2000);
+                    var poster = findPoster();
+                    if (poster && posterEl) {
+                        posterEl.style.backgroundImage = 'url("' + poster + '")';
+                        posterEl.textContent = '';
+                    }
+                }
+            } catch(e) {}
+        }
 
-        console.log('[Lampa Monitor] Запущен!');
-    }
+        // ===== ЗАПУСК =====
+        createUI();
+        updateTime();
+        updateMovie();
 
-    // ===== ЗАПУСК =====
-    // Ждем загрузки DOM
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(start, 2000);
-        });
-    } else {
-        setTimeout(start, 2000);
+        // Обновление времени каждую секунду
+        setInterval(updateTime, 1000);
+
+        // Обновление фильма каждые 3 секунды
+        setInterval(updateMovie, 3000);
+
+        console.log('[Monitor] Монитор запущен!');
     }
 
 })();
