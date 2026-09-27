@@ -1,13 +1,13 @@
 /**
- * Lampa Monitor v7.0
- * Использует Lampa.Listener (правильное API)
- * НЕ использует Lampa.Plugin.add() (которого нет)
+ * Lampa Monitor v8.0
+ * Работает через Lampa.Listener.follow() — это правильное API
+ * НЕ использует Lampa.Plugin.add() (которого нет в Lampa)
  */
 
 (function() {
     'use strict';
 
-    console.log('[Monitor] Загрузка v7.0...');
+    console.log('[Monitor] Загрузка v8.0...');
 
     // ===== ПЕРЕМЕННЫЕ =====
     var startTime = Date.now();
@@ -18,9 +18,10 @@
 
     // ===== СОЗДАНИЕ UI =====
     function createUI() {
+        // Стили
         var style = document.createElement('style');
         style.textContent = `
-            #lampa-monitor-v7 {
+            #lampa-monitor-v8 {
                 position: fixed;
                 top: 15px;
                 right: 15px;
@@ -37,7 +38,8 @@
                 backdrop-filter: blur(15px);
                 transition: all 0.3s ease;
             }
-            #lampa-monitor-v7 .mon-header {
+
+            #lampa-monitor-v8 .mon-header {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
@@ -45,13 +47,15 @@
                 padding-bottom: 12px;
                 border-bottom: 1px solid rgba(255,255,255,0.1);
             }
-            #lampa-monitor-v7 .mon-title {
+
+            #lampa-monitor-v8 .mon-title {
                 font-size: 15px;
                 font-weight: 700;
                 color: #4fc3f7;
                 letter-spacing: 1px;
             }
-            #lampa-monitor-v7 .mon-close {
+
+            #lampa-monitor-v8 .mon-close {
                 background: rgba(255,255,255,0.05);
                 border: none;
                 color: rgba(255,255,255,0.5);
@@ -66,11 +70,13 @@
                 justify-content: center;
                 transition: all 0.2s;
             }
-            #lampa-monitor-v7 .mon-close:hover {
+
+            #lampa-monitor-v8 .mon-close:hover {
                 background: rgba(255,0,0,0.2);
                 color: #ff4444;
             }
-            #lampa-monitor-v7 .mon-time-section {
+
+            #lampa-monitor-v8 .mon-time-section {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
@@ -80,24 +86,28 @@
                 border-radius: 10px;
                 border: 1px solid rgba(79,195,247,0.2);
             }
-            #lampa-monitor-v7 .mon-time-label {
+
+            #lampa-monitor-v8 .mon-time-label {
                 color: rgba(255,255,255,0.6);
                 font-size: 12px;
             }
-            #lampa-monitor-v7 .mon-time-value {
+
+            #lampa-monitor-v8 .mon-time-value {
                 font-family: 'Courier New', monospace;
                 font-size: 24px;
                 font-weight: 700;
                 color: #4fc3f7;
                 text-shadow: 0 0 20px rgba(79,195,247,0.4);
             }
-            #lampa-monitor-v7 .mon-movie-section {
+
+            #lampa-monitor-v8 .mon-movie-section {
                 display: flex;
                 gap: 15px;
                 margin-bottom: 15px;
                 min-height: 110px;
             }
-            #lampa-monitor-v7 .mon-poster {
+
+            #lampa-monitor-v8 .mon-poster {
                 width: 75px;
                 height: 110px;
                 border-radius: 10px;
@@ -113,15 +123,18 @@
                 transition: all 0.3s;
                 overflow: hidden;
             }
-            #lampa-monitor-v7 .mon-poster:hover {
+
+            #lampa-monitor-v8 .mon-poster:hover {
                 transform: scale(1.05);
                 border-color: rgba(79,195,247,0.5);
             }
-            #lampa-monitor-v7 .mon-poster-placeholder {
+
+            #lampa-monitor-v8 .mon-poster-placeholder {
                 font-size: 28px;
                 opacity: 0.3;
             }
-            #lampa-monitor-v7 .mon-info {
+
+            #lampa-monitor-v8 .mon-info {
                 flex: 1;
                 min-width: 0;
                 display: flex;
@@ -129,7 +142,8 @@
                 justify-content: center;
                 gap: 8px;
             }
-            #lampa-monitor-v7 .mon-movie-title {
+
+            #lampa-monitor-v8 .mon-movie-title {
                 font-size: 15px;
                 font-weight: 600;
                 color: #fff;
@@ -139,12 +153,14 @@
                 -webkit-box-orient: vertical;
                 overflow: hidden;
             }
-            #lampa-monitor-v7 .mon-movie-meta {
+
+            #lampa-monitor-v8 .mon-movie-meta {
                 font-size: 11px;
                 color: rgba(255,255,255,0.4);
                 line-height: 1.3;
             }
-            #lampa-monitor-v7 .mon-stats {
+
+            #lampa-monitor-v8 .mon-stats {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
@@ -152,18 +168,21 @@
                 padding-top: 12px;
                 border-top: 1px solid rgba(255,255,255,0.05);
             }
-            #lampa-monitor-v7 .mon-stat {
+
+            #lampa-monitor-v8 .mon-stat {
                 font-size: 10px;
                 color: rgba(255,255,255,0.3);
             }
-            #lampa-monitor-v7 .mon-status {
+
+            #lampa-monitor-v8 .mon-status {
                 display: flex;
                 align-items: center;
                 gap: 6px;
                 font-size: 10px;
                 color: #4caf50;
             }
-            #lampa-monitor-v7 .mon-dot {
+
+            #lampa-monitor-v8 .mon-dot {
                 width: 6px;
                 height: 6px;
                 border-radius: 50%;
@@ -171,19 +190,23 @@
                 box-shadow: 0 0 8px #4caf50;
                 animation: monitorPulse 2s infinite;
             }
+
             @keyframes monitorPulse {
                 0%, 100% { opacity: 1; transform: scale(1); }
                 50% { opacity: 0.5; transform: scale(0.8); }
             }
-            #lampa-monitor-v7 .mon-count {
+
+            #lampa-monitor-v8 .mon-count {
                 color: #4fc3f7;
                 font-weight: 600;
             }
-            #lampa-monitor-v7.hidden {
+
+            #lampa-monitor-v8.hidden {
                 transform: translateX(120%);
                 opacity: 0;
                 pointer-events: none;
             }
+
             #lampa-monitor-show-btn {
                 position: fixed;
                 top: 15px;
@@ -202,6 +225,7 @@
                 color: #4fc3f7;
                 transition: all 0.3s;
             }
+
             #lampa-monitor-show-btn:hover {
                 transform: scale(1.1);
                 box-shadow: 0 0 20px rgba(79,195,247,0.5);
@@ -211,7 +235,7 @@
 
         // Панель
         panel = document.createElement('div');
-        panel.id = 'lampa-monitor-v7';
+        panel.id = 'lampa-monitor-v8';
         panel.innerHTML = `
             <div class="mon-header">
                 <div class="mon-title">🎬 LAMPA MONITOR</div>
@@ -284,7 +308,7 @@
             if (typeof Lampa !== 'undefined' && Lampa.Listener && typeof Lampa.Listener.follow === 'function') {
                 console.log('[Monitor] Lampa.Listener доступен, подписываюсь на события...');
 
-                // События из анализа рабочих плагинов
+                // События для отслеживания фильмов
                 var events = [
                     'full_content',      // Открытие полной информации
                     'card',              // Открытие карточки
@@ -565,7 +589,7 @@
 
     // Экспорт для отладки
     window.LampaMonitor = {
-        version: '7.0',
+        version: '8.0',
         update: updateMovieInfo,
         show: function() {
             if (panel) {
